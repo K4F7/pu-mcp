@@ -1,0 +1,13 @@
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "token": "test-token-abcdef123456",
+    "sid": "test-sid-654321",
+    "user": {
+      "nickname": "Synthetic User",
+      "account": "demo_account"
+    }
+  }
+}
+

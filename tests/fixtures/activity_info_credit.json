@@ -1,0 +1,22 @@
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "id": "ACT-1001",
+    "title": "合成志愿服务活动",
+    "typeName": "志愿公益",
+    "startTime": "2026-06-10 09:00:00",
+    "endTime": "2026-06-10 11:00:00",
+    "applyStartTime": "2026-06-08 18:30:00",
+    "applyEndTime": "2026-06-09 18:30:00",
+    "address": "虚构活动室 A",
+    "organizer": "测试学生组织",
+    "status": "open",
+    "score": 2,
+    "credit": 0.5,
+    "point": 10,
+    "unknownReward": "纪念章 1 枚",
+    "description": "合成详情"
+  }
+}
+

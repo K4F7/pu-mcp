@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.playwright-mcp/
+.venv/
+*.egg-info/
+*.pyc
+*.sqlite
+*.sqlite3
+.env
+dist/
+build/
