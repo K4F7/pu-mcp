@@ -31,7 +31,7 @@ async def test_login_success_extracts_session(fixture_json):
     )
     async with PuClient(base_url="https://mock.local", min_interval_seconds=0) as client:
         session = await client.login("demo", "secret", school_sid="237791864815616")
-    assert session.token == "TEST_TOKEN"
+    assert session.token == fixture_json("login_success.json")["data"]["token"]
     assert session.sid == "test-sid-654321"
     assert session.masked_user == "demo_account"
     assert route.calls[0].request.headers["content-type"].startswith("application/json")

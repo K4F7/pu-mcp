@@ -65,10 +65,11 @@ def _html(title: str, active: str = "activities") -> str:
       <span>仅用于本人账号 · 低频请求 · 有限重试 · 不绕过验证码/风控</span>
     </div>
     <nav>
-      <a href="/">活动</a>
-      <a href="/plans">计划</a>
-      <a href="/attempts">记录</a>
-      <a href="/settings">设置</a>
+      <a href="/" {'aria-current="page"' if safe_active == 'activities' else ''}>活动</a>
+      <a href="/plans" {'aria-current="page"' if safe_active == 'plans' else ''}>计划</a>
+      <a href="/attempts" {'aria-current="page"' if safe_active == 'attempts' else ''}>记录</a>
+      <a href="/settings" {'aria-current="page"' if safe_active == 'settings' else ''}>设置</a>
+      <a href="/credit" {'aria-current="page"' if safe_active == 'credit' else ''}>学分进度</a>
     </nav>
   </header>
   <main>
@@ -204,6 +205,10 @@ def create_app(service: PuService | None = None, scheduler=None) -> FastAPI:
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page() -> str:
         return _html("设置", "settings")
+
+    @app.get("/credit", response_class=HTMLResponse)
+    def credit_page() -> str:
+        return _html("学分进度", "credit")
 
     @app.get("/api/auth/status")
     def auth_status(svc: PuService = Depends(get_service)):  # noqa: B008

@@ -1,273 +1,64 @@
-const root = document.querySelector("#app-root");
-const view = document.body.dataset.view || "activities";
-
-function el(tagName, options = {}, children = []) {
-  const node = document.createElement(tagName);
-  if (options.className) node.className = options.className;
-  if (options.text !== undefined) node.textContent = options.text;
-  if (options.href) node.setAttribute("href", options.href);
-  if (options.type) node.setAttribute("type", options.type);
-  if (options.name) node.setAttribute("name", options.name);
-  if (options.value !== undefined) node.setAttribute("value", options.value);
-  if (options.min !== undefined) node.setAttribute("min", options.min);
-  if (options.max !== undefined) node.setAttribute("max", options.max);
-  if (options.required) node.required = true;
-  for (const child of children) {
-    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
-  }
-  return node;
+"use strict";
+// @ts-nocheck
+const root = document.querySelector('#app-root');
+const view = document.body.dataset.view || 'activities';
+const el = (t, o = {}, c = []) => { const n = document.createElement(t); if (o.text != null)
+    n.textContent = o.text; for (const [k, v] of Object.entries(o)) {
+    if (k !== 'text')
+        n[k] !== undefined ? (n[k] = v) : n.setAttribute(k, String(v));
+} c.forEach(x => n.append(x instanceof Node ? x : document.createTextNode(String(x)))); return n; };
+async function requestJSON(u, o = {}) { const r = await fetch(u, o); if (r.ok)
+    return r.status === 204 ? null : r.json(); throw Error((await r.text()) || r.statusText); }
+function textCell(v) { return el('td', { text: v ?? '-' }); }
+const cell = textCell;
+const table = (h, rs, caption = '') => el('div', { className: 'table-wrap' }, [caption && el('small', { text: '表格可横向滚动' }), el('table', {}, [caption && el('caption', { text: caption }), el('thead', {}, [el('tr', {}, h.map(x => el('th', { text: x, scope: 'col' })))]), el('tbody', {}, rs.map(r => el('tr', {}, r)))])]);
+const CREDIT_KEY = 'pu.credit.v2', BLOCKS = ['校园阅读', '创新创业类', '志愿服务', '思想引领', '学术讲座', '社会实践', '体育健康', '美育素养', '劳动教育', '职业发展', '团队活动', '科技竞赛', '其他'], HARD = new Set(BLOCKS.slice(0, 5)), TYPE_BLOCK = { '志愿公益': '志愿服务', '创新创业': '创新创业类', '思想引领': '思想引领', '校园阅读': '校园阅读', '学术讲座': '学术讲座' };
+function loadCredit() { try {
+    const d = JSON.parse(localStorage.getItem(CREDIT_KEY));
+    if (d?.version === 2 && Number.isInteger(d.stage) && d.credits)
+        return d;
 }
-
-function textCell(value) {
-  return el("td", { text: value ?? "-" });
-}
-
-function nodeCell(node) {
-  return el("td", {}, [node]);
-}
-
-function table(headers, rows) {
-  const thead = el("thead", {}, [
-    el("tr", {}, headers.map((header) => el("th", { text: header }))),
-  ]);
-  const tbody = el(
-    "tbody",
-    {},
-    rows.map((cells) => el("tr", {}, cells)),
-  );
-  return el("table", {}, [thead, tbody]);
-}
-
-function toolbar(title, actions = []) {
-  return el("div", { className: "toolbar" }, [el("h1", { text: title }), ...actions]);
-}
-
-function notice(text) {
-  return el("div", { className: "notice", text });
-}
-
-function scoreSummary(activity) {
-  const items = activity.score_items || [];
-  return items.map((item) => `${item.label}:${item.value}${item.unit || ""}`).join(" / ") || "-";
-}
-
-function showMessage(text, className = "notice") {
-  const message = el("div", { className, text });
-  root.prepend(message);
-  return message;
-}
-
-async function requestJSON(url, options = {}) {
-  const response = await fetch(url, options);
-  if (response.ok) {
-    if (response.status === 204) return null;
-    return response.json();
-  }
-  let message = await response.text();
-  try {
-    const payload = JSON.parse(message);
-    message = payload.error?.message || message;
-  } catch {
-    // Keep the plain response body.
-  }
-  throw new Error(message);
-}
-
-async function getJSON(url) {
-  return requestJSON(url);
-}
-
-async function postJSON(url, payload) {
-  return requestJSON(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-}
-
-async function deleteJSON(url) {
-  return requestJSON(url, { method: "DELETE" });
-}
-
-function createRefreshButton(handler) {
-  const button = el("button", { type: "button", text: "强制刷新" });
-  button.addEventListener("click", handler);
-  return button;
-}
-
-function createPlanForm(defaults = {}) {
-  const form = el("form", { className: "plan-form" });
-  const activityId = el("input", {
-    name: "activity_id",
-    value: defaults.activity_id || "",
-    required: true,
-  });
-  const title = el("input", {
-    name: "activity_title",
-    value: defaults.activity_title || defaults.activity_id || "",
-    required: true,
-  });
-  const runAt = el("input", { name: "run_at", type: "datetime-local", required: true });
-  const maxAttempts = el("input", {
-    name: "max_attempts",
-    type: "number",
-    value: defaults.max_attempts || 1,
-    min: 1,
-    max: 3,
-    required: true,
-  });
-  const submit = el("button", { type: "submit", text: "创建计划" });
-
-  form.append(
-    el("label", {}, ["Activity ID", activityId]),
-    el("label", {}, ["标题", title]),
-    el("label", {}, ["执行时间", runAt]),
-    el("label", {}, ["最大尝试", maxAttempts]),
-    submit,
-  );
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    submit.disabled = true;
-    try {
-      await postJSON("/api/signup/plans", {
-        activity_id: activityId.value,
-        activity_title: title.value,
-        run_at: new Date(runAt.value).toISOString(),
-        max_attempts: Number(maxAttempts.value),
-      });
-      showMessage("计划已创建；保持 pu serve 运行后会按时执行。");
-      if (view === "plans") await renderPlans();
-    } finally {
-      submit.disabled = false;
+catch { } return { version: 2, stage: 1, credits: {} }; }
+function saveCredit(d) { localStorage.setItem(CREDIT_KEY, JSON.stringify(d)); }
+const activityCredit = a => Math.max(0, ...(a.score_items || []).filter(x => x.kind === 'academic_credit').map(x => Math.max(0, Number(x.value) || 0)));
+const _safeActivityId = activity => encodeURIComponent(activity.activity_id);
+function renderCredit() { const d = loadCredit(), total = Object.values(d.credits).reduce((a, b) => a + b, 0); const rows = BLOCKS.map(b => { const got = d.credits[b] || 0, t = HARD.has(b) ? 1 : 0; const inp = el('input', { type: 'number', min: '0', step: '.1', value: got, ariaLabel: `${b}已获` }); inp.oninput = () => { d.credits[b] = Math.max(0, Number(inp.value) || 0); saveCredit(d); renderCredit(); }; return [textCell(b), el('td', {}, [inp]), textCell(t), textCell(got >= t ? '已达' : '进行中')]; }); const stage = el('select', { ariaLabel: '当前阶段' }, [1, 2, 3, 4, 5, 6].map(i => el('option', { value: i, text: `阶段 ${i}`, selected: i === d.stage }))); stage.onchange = () => { d.stage = +stage.value; saveCredit(d); renderCredit(); }; root.replaceChildren(el('h1', { text: '学分进度' }), el('div', { className: 'credit-dashboard' }, [el('div', { className: 'summary-card' }, [el('strong', { text: `合计 ${total} / 6` }), el('span', { className: 'badge', text: `阶段缺口 ${Math.max(0, d.stage - total)}` }), stage]), el('p', { className: 'notice', text: '已报名活动不计入；讲座学分需核实' })]), table(['板块', '已获', '目标', '状态'], rows, '学分板块'), el('button', { text: '重置', onclick: () => { localStorage.removeItem(CREDIT_KEY); renderCredit(); } })); }
+function gapInfo(a, d) { const b = TYPE_BLOCK[a.activity_type] || '其他', gap = Math.max(0, (HARD.has(b) ? 1 : 0) - (d.credits[b] || 0)), c = activityCredit(a); const priority = gap > 0 && c >= (a.activity_type === '学术讲座' ? .5 : 0.01) ? 1 : 0; return { b, gap, c, priority }; }
+async function renderActivities() { const a = await requestJSON('/api/activities'), d = loadCredit(); const sel = el('select', { ariaLabel: '奖励类型' }, ['', 'academic_credit', 'credit', 'point'].map(v => el('option', { value: v, text: v || '奖励类型' }))), sort = el('select', { ariaLabel: '排序' }, ['', 'signup_end_time', 'academic_credit', 'credit', 'point', 'gap_recommend'].map(v => el('option', { value: v, text: v || '排序' }))), box = el('div'); const draw = () => { let x = a.filter(i => !sel.value || (i.score_items || []).some(z => z.kind === sel.value)); if (sort.value === 'signup_end_time')
+    x.sort((u, v) => String(u.signup_end_time || '').localeCompare(String(v.signup_end_time || ''))); if (sort.value === 'academic_credit')
+    x.sort((u, v) => activityCredit(v) - activityCredit(u)); if (sort.value === 'credit' || sort.value === 'point')
+    x.sort((u, v) => (Math.max(0, ...(v.score_items || []).filter(z => z.kind === sort.value).map(z => Number(z.value) || 0))) - (Math.max(0, ...(u.score_items || []).filter(z => z.kind === sort.value).map(z => Number(z.value) || 0)))); if (sort.value === 'gap_recommend')
+    x.sort((u, v) => { const U = gapInfo(u, d), V = gapInfo(v, d); return V.priority - U.priority || V.gap - U.gap || V.c - U.c || String(u.signup_end_time || '').localeCompare(String(v.signup_end_time || '')); }); box.replaceChildren(table(['ID', '标题', '类型', '报名窗口', '奖励', '推荐'], x.map(i => { const g = gapInfo(i, d); return [cell(i.activity_id), cell(i.title), cell(i.activity_type), cell(`${i.signup_start_time || '-'} ~ ${i.signup_end_time || '-'}`), cell((i.score_items || []).map(z => `${z.label}:${Math.max(0, Number(z.value) || 0)}`).join(' / ')), cell(g.priority ? '匹配缺口，建议优先' : '常规活动')]; }))); }; sel.onchange = sort.onchange = draw; root.replaceChildren(el('h1', { text: '活动' }), el('div', { className: 'filters' }, [el('label', {}, ['奖励类型', sel]), el('label', {}, ['排序', sort])]), box); draw(); }
+async function renderActivityDetail(id) { const a = await requestJSON(`/api/activities/${encodeURIComponent(id)}`); root.replaceChildren(el('h1', { text: a.title || id }), el('p', { text: `预计学分：${activityCredit(a)}` }), createPlanForm(a)); }
+function createPlanForm(a) { const f = el('form', { className: 'plan-form', 'data-activity': encodeURIComponent(a.activity_id) }), runAt = el('input', { type: 'datetime-local', required: true, ariaLabel: '计划时间' }); f.append(el('label', {}, ['计划时间', runAt]), el('button', { type: 'submit', text: '创建计划' })); f.onsubmit = async (e) => { e.preventDefault(); await requestJSON('/api/signup/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activity_id: a.activity_id, activity_title: a.title, run_at: new Date(runAt.value).toISOString() }) }); }; return f; }
+async function renderPlans() { const ps = await requestJSON('/api/signup/plans'), msg = el('p', { ariaLive: 'polite' }); root.replaceChildren(el('h1', { text: '计划' }), msg, table(['ID', '活动', '状态', '操作'], ps.map(p => [cell(p.plan_id), cell(p.activity_title), cell(p.status), p.status === 'pending' ? el('button', { text: '取消', onclick: async () => { await requestJSON(`/api/signup/plans/${p.plan_id}`, { method: "DELETE" }); msg.textContent = '已取消'; renderPlans(); } }) : cell('详情')]))); }
+async function renderAttempts() { const as = await requestJSON('/api/signup/attempts'); root.replaceChildren(el('h1', { text: '记录' }), table(['计划', '状态', '消息'], as.map(a => [cell(a.plan_id), cell(a.status), cell(a.message)]))); }
+async function renderSettings() { const status = await requestJSON('/api/auth/status'), msg = el('p', { ariaLive: 'polite', text: status.authenticated ? `已登录：${status.user || ''}` : (status.message || '未登录') }), form = el('form', { className: 'auth-form' }), user = el('input', { type: 'text', name: 'username', required: true, ariaLabel: '用户名' }), pass = el('input', { type: 'password', name: 'password', required: true, ariaLabel: '密码' }); const logout = () => { requestJSON('/api/auth/logout', { method: 'POST' }).then(() => renderSettings()); }; if (status.authenticated)
+    form.append(el('button', { type: 'button', text: '登出', onclick: logout }));
+else {
+    form.append(el('label', {}, ['用户名', user]), el('label', {}, ['密码', pass]), el('button', { type: 'submit', text: '登录' }));
+    form.onsubmit = async (e) => { e.preventDefault(); try {
+        await requestJSON('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: user.value, password: pass.value }) });
+        renderSettings();
     }
-  });
-  return form;
+    catch (err) {
+        msg.textContent = err.message;
+    } };
+} root.replaceChildren(el('h1', { text: '设置' }), msg, form); }
+(async () => { try {
+    if (view === 'settings')
+        await renderSettings();
+    else if (view === 'credit')
+        renderCredit();
+    else if (view === 'plans')
+        await renderPlans();
+    else if (view === 'attempts')
+        await renderAttempts();
+    else if (view.startsWith('activity:'))
+        await renderActivityDetail(view.slice(9));
+    else
+        await renderActivities();
 }
-
-async function renderActivities(refresh = false) {
-  root.replaceChildren(
-    toolbar("活动", [createRefreshButton(() => renderActivities(true))]),
-    notice("默认优先使用本地缓存；强制刷新会访问配置的 PU API，请保持低频使用。"),
-  );
-  const activities = await getJSON(`/api/activities?refresh=${refresh ? "true" : "false"}`);
-  const rows = activities.map((activity) => {
-    const href = `/activities/${encodeURIComponent(activity.activity_id)}`;
-    return [
-      nodeCell(el("a", { href, text: activity.activity_id })),
-      textCell(activity.title),
-      textCell(activity.activity_type),
-      textCell(`${activity.signup_start_time || "-"} ~ ${activity.signup_end_time || "-"}`),
-      textCell(`${activity.start_time || "-"} ~ ${activity.end_time || "-"}`),
-      textCell(scoreSummary(activity)),
-    ];
-  });
-  root.append(
-    table(["ID", "标题", "类型", "报名窗口", "活动时间", "加分/学分/积分"], rows),
-  );
-}
-
-async function renderActivityDetail(activityId, refresh = false) {
-  const encodedId = encodeURIComponent(activityId);
-  const activity = await getJSON(`/api/activities/${encodedId}?refresh=${refresh ? "true" : "false"}`);
-  root.replaceChildren(
-    toolbar(activity.title, [
-      createRefreshButton(() => renderActivityDetail(activityId, true)),
-      el("a", { href: "/", text: "返回活动" }),
-    ]),
-    table(
-      ["字段", "内容"],
-      [
-        [textCell("活动 ID"), textCell(activity.activity_id)],
-        [textCell("类型"), textCell(activity.activity_type)],
-        [textCell("组织方"), textCell(activity.organizer)],
-        [textCell("地点"), textCell(activity.location)],
-        [
-          textCell("报名窗口"),
-          textCell(`${activity.signup_start_time || "-"} ~ ${activity.signup_end_time || "-"}`),
-        ],
-        [
-          textCell("活动时间"),
-          textCell(`${activity.start_time || "-"} ~ ${activity.end_time || "-"}`),
-        ],
-        [textCell("加分/学分/积分"), textCell(scoreSummary(activity))],
-      ],
-    ),
-    el("h2", { text: "创建报名计划" }),
-    createPlanForm({
-      activity_id: activity.activity_id,
-      activity_title: activity.title,
-    }),
-  );
-}
-
-async function renderPlans() {
-  const plans = await getJSON("/api/signup/plans");
-  const rows = plans.map((plan) => {
-    const cancel = el("button", { type: "button", text: "取消" });
-    cancel.disabled = !plan.enabled || ["cancelled", "succeeded", "failed"].includes(plan.status);
-    cancel.addEventListener("click", async () => {
-      cancel.disabled = true;
-      await deleteJSON(`/api/signup/plans/${encodeURIComponent(plan.plan_id)}`);
-      await renderPlans();
-    });
-    return [
-      textCell(plan.plan_id),
-      textCell([plan.activity_id, plan.activity_title].filter(Boolean).join(" ")),
-      textCell(plan.run_at),
-      textCell(plan.status),
-      textCell(`${plan.attempt_count}/${plan.max_attempts}`),
-      nodeCell(cancel),
-    ];
-  });
-  root.replaceChildren(
-    toolbar("报名计划", [el("span", { className: "status", text: "默认 1 次，最多 3 次" })]),
-    createPlanForm(),
-    table(["ID", "活动", "执行时间", "状态", "尝试", "操作"], rows),
-  );
-}
-
-async function renderAttempts() {
-  const attempts = await getJSON("/api/signup/attempts");
-  const rows = attempts.map((attempt) => [
-    textCell(attempt.attempt_id),
-    textCell(attempt.plan_id),
-    textCell(attempt.activity_id),
-    textCell(attempt.attempted_at),
-    textCell(attempt.status),
-    textCell(attempt.risk_flag ? "是" : "否"),
-    textCell(attempt.message),
-  ]);
-  root.replaceChildren(
-    toolbar("报名尝试记录", [
-      el("span", { className: "status", text: "风控会停止自动操作" }),
-    ]),
-    table(["ID", "计划", "活动", "时间", "状态", "风险", "消息"], rows),
-  );
-}
-
-async function renderSettings() {
-  const status = await getJSON("/api/auth/status");
-  root.replaceChildren(
-    toolbar("设置", [el("span", { className: "status", text: "本地优先" })]),
-    notice("仅用于本人账号；不会保存明文密码；token/sid 在状态输出中脱敏。"),
-    el("pre", { text: JSON.stringify(status, null, 2) }),
-  );
-}
-
-(async function boot() {
-  try {
-    if (view.startsWith("activity:")) {
-      await renderActivityDetail(view.slice("activity:".length));
-    } else if (view === "plans") {
-      await renderPlans();
-    } else if (view === "attempts") {
-      await renderAttempts();
-    } else if (view === "settings") {
-      await renderSettings();
-    } else {
-      await renderActivities();
-    }
-  } catch (error) {
-    root.replaceChildren(el("p", { className: "danger", text: error.message }));
-  }
-})();
+catch (e) {
+    root.textContent = e.message;
+} })();
