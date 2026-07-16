@@ -343,3 +343,20 @@ def test_web_error_handler_maps_risk_and_business_errors():
     response = client.get("/api/activities/ACT-1001")
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "business_error"
+
+
+def test_web_reminders_endpoint_whitelists_fields_and_serializes_datetime():
+    class ReminderService(MockService):
+        async def reminders(self):
+            return [Activity(activity_id="A", title="T", start_time=datetime(2026, 1, 1, tzinfo=UTC), raw={"secret": "x"})]
+    response = TestClient(create_app(ReminderService())).get("/api/reminders")
+    assert set(response.json()[0]) == {"activity_id", "title", "activity_type", "location", "start_time", "end_time", "organizer", "status"}
+    assert response.json()[0]["start_time"].endswith("Z")
+    assert "secret" not in response.text
+
+
+def test_reminders_page_script_isolated_from_normal_pages():
+    client = TestClient(create_app(MockService()))
+    reminder, normal = client.get("/reminders").text, client.get("/").text
+    assert '/static/reminders.js' in reminder and '/static/app.js' not in reminder
+    assert '/static/app.js' in normal and '/static/reminders.js' not in normal

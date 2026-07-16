@@ -57,6 +57,7 @@ def _html(title: str, active: str = "activities") -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{safe_title}</title>
   <link rel="stylesheet" href="/static/app.css">
+  {('<link rel="stylesheet" href="/static/reminders.css">' if safe_active == 'reminders' else '')}
 </head>
 <body data-view="{safe_active}">
   <header class="topbar">
@@ -67,6 +68,7 @@ def _html(title: str, active: str = "activities") -> str:
     <nav>
       <a href="/" {'aria-current="page"' if safe_active == 'activities' else ''}>活动</a>
       <a href="/plans" {'aria-current="page"' if safe_active == 'plans' else ''}>计划</a>
+      <a href="/reminders" {'aria-current="page"' if safe_active == 'reminders' else ''}>提醒</a>
       <a href="/attempts" {'aria-current="page"' if safe_active == 'attempts' else ''}>记录</a>
       <a href="/settings" {'aria-current="page"' if safe_active == 'settings' else ''}>设置</a>
       <a href="/credit" {'aria-current="page"' if safe_active == 'credit' else ''}>学分进度</a>
@@ -75,7 +77,7 @@ def _html(title: str, active: str = "activities") -> str:
   <main>
     <section id="app-root" class="workspace"></section>
   </main>
-  <script src="/static/app.js"></script>
+  <script src="/static/{'reminders.js' if safe_active == 'reminders' else 'app.js'}"></script>
 </body>
 </html>"""
 
@@ -194,6 +196,10 @@ def create_app(service: PuService | None = None, scheduler=None) -> FastAPI:
     def activity_page(activity_id: str) -> str:
         return _html(f"活动 {activity_id}", f"activity:{activity_id}")
 
+    @app.get("/reminders", response_class=HTMLResponse)
+    def reminders_page() -> str:
+        return _html("Reminders", "reminders")
+
     @app.get("/plans", response_class=HTMLResponse)
     def plans_page() -> str:
         return _html("报名计划", "plans")
@@ -240,6 +246,11 @@ def create_app(service: PuService | None = None, scheduler=None) -> FastAPI:
     @app.get("/api/activities/joined")
     async def joined(svc: PuService = Depends(get_service)):  # noqa: B008
         return [item.model_dump(mode="json") for item in await svc.joined_activities()]
+
+    @app.get("/api/reminders")
+    async def reminders(svc: PuService = Depends(get_service)):
+        fields = ("activity_id", "title", "activity_type", "location", "start_time", "end_time", "organizer", "status")
+        return [{k: item.model_dump(mode="json").get(k) for k in fields} for item in await svc.reminders()]
 
     @app.get("/api/activities/{activity_id}")
     async def activity_detail(

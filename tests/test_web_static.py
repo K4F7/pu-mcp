@@ -29,3 +29,15 @@ def test_static_js_does_not_interpolate_untrusted_activity_fields_into_inner_htm
 def test_static_js_submits_datetime_local_as_iso_string():
     source = APP_JS.read_text(encoding="utf-8")
     assert "new Date(runAt.value).toISOString()" in source
+
+
+def test_reminders_static_contract_is_safe_and_retries():
+    source = (APP_JS.parent / "reminders.ts").read_text(encoding="utf-8")
+    for token in ("/api/reminders", "60000", "textContent", "replaceChildren", "retry.onclick = load"):
+        assert token in source
+    assert "innerHTML" not in source
+
+
+def test_reminders_bundle_is_minified_and_contains_calendar_views():
+    source = (APP_JS.parent / "reminders.js").read_text(encoding="utf-8")
+    assert "dayGridMonth" in source and "listMonth" in source

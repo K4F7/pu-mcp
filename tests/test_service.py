@@ -183,3 +183,36 @@ async def test_service_skips_signup_if_already_joined(fixture_json, tmp_path):
     attempt = await service.execute_signup_plan(plan.plan_id)
     assert attempt.status == "skipped"
     assert client.join_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_service_reminders_detail_only_fills_missing_fields(tmp_path):
+    class ReminderClient(FakeClient):
+        async def my_list(self):
+            return {"data": [{"activityId": "A", "title": "joined", "location": "room"}]}
+
+        async def activity_info(self, activity_id):
+            return {"data": {"activityId": activity_id, "title": "detail", "activityType": "type", "location": "detail-room", "organizer": "org"}}
+
+    client = ReminderClient(lambda _: {})
+    service = PuService(client=client, storage=Storage(tmp_path / "r.sqlite"), session_store=MemorySessionStore())
+    result = await service.reminders()
+    assert result[0].title == "joined"
+    assert result[0].location == "room"
+    assert result[0].activity_type == "type"
+    assert result[0].organizer == "org"
+
+
+@pytest.mark.asyncio
+async def test_service_reminders_propagates_auth_and_risk_errors(tmp_path):
+    from pu_tool.errors import AuthError, RiskControlError
+
+    for error in (AuthError("expired"), RiskControlError("captcha")):
+        class ErrorClient(FakeClient):
+            async def my_list(self):
+                return {"data": [{"activityId": "A", "title": "joined"}]}
+            async def activity_info(self, activity_id):
+                raise error
+        service = PuService(client=ErrorClient(lambda _: {}), storage=Storage(tmp_path / f"{type(error).__name__}.sqlite"), session_store=MemorySessionStore())
+        with pytest.raises(type(error)):
+            await service.reminders()

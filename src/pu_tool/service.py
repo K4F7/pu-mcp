@@ -9,6 +9,7 @@ from pu_tool.pu_client import PuClient
 from pu_tool.security import KeyringSessionStore, SessionStore, mask_secret
 from pu_tool.storage import Storage
 from pu_tool.time_utils import ensure_aware_local
+from pu_tool.errors import AuthError, RiskControlError
 
 
 class PuService:
@@ -89,6 +90,32 @@ class PuService:
 
     async def joined_activities(self) -> list[Activity]:
         return parse_activity_list(await self.client.my_list())
+
+    async def reminders(self) -> list[Activity]:
+        joined = await self.joined_activities()
+        result = []
+        for activity in joined:
+            fields = ("title", "activity_type", "location", "start_time", "end_time", "organizer", "status")
+            def missing(key: str) -> bool:
+                value = getattr(activity, key, None)
+                return value in (None, "") or (
+                    key == "activity_type" and value == Activity.model_fields["activity_type"].default
+                )
+
+            if any(missing(key) for key in fields):
+                try:
+                    detail = await self.activity_detail(activity.activity_id, refresh=False)
+                    data = activity.model_dump()
+                    for key in fields:
+                        if missing(key) and getattr(detail, key, None):
+                            data[key] = getattr(detail, key)
+                    activity = Activity(**data)
+                except (AuthError, RiskControlError):
+                    raise
+                except Exception:
+                    pass
+            result.append(activity)
+        return result
 
     def create_signup_plan(
         self,

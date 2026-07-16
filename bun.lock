@@ -1,0 +1,32 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 0,
+  "workspaces": {
+    "": {
+      "dependencies": {
+        "fullcalendar": "7.0.0",
+        "temporal-polyfill": "1.0.1",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+  },
+  "packages": {
+    "@full-ui/headless-calendar": ["@full-ui/headless-calendar@7.0.0", "https://registry.npmmirror.com/@full-ui/headless-calendar/-/headless-calendar-7.0.0.tgz", { "peerDependencies": { "temporal-polyfill": "^1.0.1" } }, "sha512-47Y2NoiSt/DJy/+PD9yv4OLhaVJqn8oknFXhS6kiMnoXSOiYkoz6gqVIOCF2nvvQPqKUepb3W3403Qj34QfjtQ=="],
+
+    "@fullcalendar/core": ["@fullcalendar/core@7.0.0", "https://registry.npmmirror.com/@fullcalendar/core/-/core-7.0.0.tgz", { "peerDependencies": { "@full-ui/headless-calendar": "7.0.0", "temporal-polyfill": "^1.0.1" } }, "sha512-cZobng3rB7PQp8zdRp7SIeA4ZEvOWhnwHuFWQf3xXIM9BPfmKb5EFhpiNHCT6zzn041A2wv9ztqiQ60S1sY5KA=="],
+
+    "fullcalendar": ["fullcalendar@7.0.0", "https://registry.npmmirror.com/fullcalendar/-/fullcalendar-7.0.0.tgz", { "dependencies": { "@full-ui/headless-calendar": "7.0.0", "@fullcalendar/core": "7.0.0", "preact": "^10.29.0" }, "peerDependencies": { "temporal-polyfill": "^1.0.1" } }, "sha512-aNraQvmocArJCFHyjUGUrTVAsCnAbjRpfI4BpfnqL1pOL/rsBt7HfcNtJSGL1MPTLS1YKzLqu4NoYqzHTP7JKg=="],
+
+    "preact": ["preact@10.29.7", "https://registry.npmmirror.com/preact/-/preact-10.29.7.tgz", { "peerDependencies": { "preact-render-to-string": ">=5" }, "optionalPeers": ["preact-render-to-string"] }, "sha512-DCHYrK/B10yUD3ZjLfhZ3WIE/9Vf9VFUODcRE2dRomTYDpJk6z6L9wecSfhfE6M9ZTHUdyQkoC46arIDhEV84Q=="],
+
+    "temporal-polyfill": ["temporal-polyfill@1.0.1", "https://registry.npmmirror.com/temporal-polyfill/-/temporal-polyfill-1.0.1.tgz", { "dependencies": { "temporal-spec": "1.0.0", "temporal-utils": "1.0.1" } }, "sha512-N2SoI9olnW7BUsU8RosDphZQl9s+WJ8O7PoJMFCr/e5/1rFkVI4GNOWaSeySG+UoP04foPYsnLWbJmbXOiShZg=="],
+
+    "temporal-spec": ["temporal-spec@1.0.0", "https://registry.npmmirror.com/temporal-spec/-/temporal-spec-1.0.0.tgz", {}, "sha512-00Ahj1e1ifaERTMOIIGpOCdOo9IEk2m6GGSMedsn9a2SIsGLdOTbmME1Htv6IM82b6VHrzSUTIVc7YHy6hdhFQ=="],
+
+    "temporal-utils": ["temporal-utils@1.0.1", "https://registry.npmmirror.com/temporal-utils/-/temporal-utils-1.0.1.tgz", {}, "sha512-HAixuesxFQIUaQk3ptX2jhfO/FsOkgVkDDMawvp6n/fkB1q6BKfs3lURw9I+pK/2e2e/q/vrLrxmeqauBoyGMQ=="],
+
+    "typescript": ["typescript@5.9.3", "https://registry.npmmirror.com/typescript/-/typescript-5.9.3.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+  }
+}

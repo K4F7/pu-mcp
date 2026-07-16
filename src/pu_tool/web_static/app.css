@@ -53,6 +53,7 @@ label { display:grid; gap:5px; color:var(--muted); font-size:.85rem; }
 .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
 .card { background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:16px; box-shadow:var(--shadow); }
 .card h2 { font-size:1.1rem; }
+.reminder-meta { display:grid; gap:3px; margin-top:10px; color:var(--muted); font-size:.9rem; }
 .card-head { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
 .badge,.status { display:inline-flex; align-items:center; min-height:26px; padding:3px 8px; border-radius:999px; background:var(--accent-soft); color:var(--accent); font-size:.78rem; }
 .status { border:1px solid var(--line); background:var(--panel); }
@@ -60,6 +61,9 @@ label { display:grid; gap:5px; color:var(--muted); font-size:.85rem; }
 .credit-dashboard { display:grid; gap:12px; }
 .summary-card { display:flex; align-items:center; gap:14px; padding:16px; border:1px solid var(--line); border-radius:7px; background:var(--panel); box-shadow:var(--shadow); }
 .table-wrap { overflow-x:auto; }
+.fc { --fc-border-color:var(--line); --fc-button-bg-color:var(--accent); --fc-button-border-color:var(--accent); --fc-button-hover-bg-color:var(--accent-strong); --fc-button-hover-border-color:var(--accent-strong); --fc-button-active-bg-color:var(--accent-strong); --fc-button-active-border-color:var(--accent-strong); --fc-today-bg-color:var(--accent-soft); --fc-event-bg-color:var(--accent); --fc-event-border-color:var(--accent); --fc-page-bg-color:var(--panel); --fc-neutral-bg-color:var(--panel-alt); color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:8px; }
+.fc .fc-list-event:hover td { background:var(--accent-soft); }
+@media (max-width:720px) { .fc .fc-toolbar { flex-wrap:wrap; gap:6px; } .fc .fc-toolbar-title { flex:1 1 100%; order:-1; } }
 @media (max-width:720px) { .topbar { align-items:flex-start; flex-direction:column; } nav { overflow-x:auto; max-width:100%; padding-bottom:2px; } .toolbar { align-items:flex-start; flex-direction:column; } table { display:block; overflow-x:auto; } .plan-form { grid-template-columns:1fr; } }
 @media (max-width:480px) { main { padding:14px 12px; } .filters { flex-direction:column; } .filters input,.filters select { width:100%; } th,td { padding:8px 9px; } }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition-duration:.01ms !important; animation-duration:.01ms !important; } }
