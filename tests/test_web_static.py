@@ -12,8 +12,8 @@ def test_static_js_uses_safe_dom_rendering_helpers():
     assert "encodeURIComponent(activity.activity_id)" in source
     assert "function renderPlans" in source
     assert "/api/signup/plans" in source
-    assert 'method:"DELETE"' in source
-    assert "if(x==null||x===false)return" in source
+    assert 'method: "DELETE"' in source
+    assert "x == null || x === false" in source
 
 
 def test_static_js_does_not_interpolate_untrusted_activity_fields_into_inner_html():
@@ -60,6 +60,17 @@ def test_activity_detail_shows_participation_information_and_plan_feedback():
         assert label in source
     assert "计划已创建。" in source
     assert "前往计划页" in source
+
+
+def test_signup_pages_use_real_statuses_and_link_success_to_reminders():
+    source = APP_TS.read_text(encoding="utf-8")
+    assert "canCancelPlan(plan.status, plan.enabled)" in source
+    assert 'p.status === "pending"' not in source
+    assert "planStatusLabel(p.status)" in source
+    assert "attemptStatusLabel(a.status)" in source
+    assert "查看提醒" in source
+    assert "状态每 15 秒自动刷新" in source
+    assert "记录每 30 秒自动刷新" in source
 
 
 def test_reminders_static_contract_is_safe_and_retries():

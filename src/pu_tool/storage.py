@@ -170,6 +170,9 @@ class Storage:
         return self.get_plan(plan_id)
 
     def cancel_plan(self, plan_id: int) -> SignupPlan:
+        plan = self.get_plan(plan_id)
+        if not plan.enabled or plan.status not in {"scheduled", "retrying"}:
+            raise ValueError("only scheduled or retrying plans can be cancelled")
         return self.update_plan_status(plan_id, "cancelled", enabled=False)
 
     def record_attempt(self, attempt: SignupAttempt) -> SignupAttempt:

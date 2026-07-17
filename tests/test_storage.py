@@ -59,3 +59,23 @@ def test_storage_cancel_plan(tmp_path):
     cancelled = storage.cancel_plan(plan.plan_id)
     assert cancelled.status == "cancelled"
     assert not cancelled.enabled
+
+
+@pytest.mark.parametrize("status", ["running", "succeeded", "failed", "cancelled"])
+def test_storage_rejects_cancelling_non_waiting_plan(tmp_path, status):
+    storage = Storage(tmp_path / f"{status}.sqlite")
+    plan = storage.create_plan(
+        SignupPlan(
+            activity_id="ACT-1001",
+            activity_title="合成活动",
+            run_at=datetime.now(UTC),
+        )
+    )
+    storage.update_plan_status(
+        plan.plan_id,
+        status,
+        enabled=status == "running",
+    )
+
+    with pytest.raises(ValueError, match="only scheduled or retrying"):
+        storage.cancel_plan(plan.plan_id)
