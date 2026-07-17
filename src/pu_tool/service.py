@@ -4,12 +4,30 @@ from datetime import datetime
 
 from pu_tool.activity_parser import parse_activity_detail, parse_activity_list
 from pu_tool.config import Settings
+from pu_tool.errors import AuthError, RiskControlError
 from pu_tool.models import Activity, AuthSession, SignupAttempt, SignupPlan
 from pu_tool.pu_client import PuClient
 from pu_tool.security import KeyringSessionStore, SessionStore, mask_secret
 from pu_tool.storage import Storage
 from pu_tool.time_utils import ensure_aware_local
-from pu_tool.errors import AuthError, RiskControlError
+
+REMINDER_DETAIL_FIELDS = (
+    "title",
+    "activity_type",
+    "location",
+    "start_time",
+    "end_time",
+    "organizer",
+    "status",
+)
+
+
+def _missing_reminder_field(activity: Activity, key: str) -> bool:
+    value = getattr(activity, key, None)
+    return value in (None, "") or (
+        key == "activity_type"
+        and value == Activity.model_fields["activity_type"].default
+    )
 
 
 class PuService:
@@ -93,21 +111,19 @@ class PuService:
 
     async def reminders(self) -> list[Activity]:
         joined = await self.joined_activities()
-        result = []
+        result: list[Activity] = []
         for activity in joined:
-            fields = ("title", "activity_type", "location", "start_time", "end_time", "organizer", "status")
-            def missing(key: str) -> bool:
-                value = getattr(activity, key, None)
-                return value in (None, "") or (
-                    key == "activity_type" and value == Activity.model_fields["activity_type"].default
-                )
-
-            if any(missing(key) for key in fields):
+            if any(
+                _missing_reminder_field(activity, key)
+                for key in REMINDER_DETAIL_FIELDS
+            ):
                 try:
                     detail = await self.activity_detail(activity.activity_id, refresh=False)
                     data = activity.model_dump()
-                    for key in fields:
-                        if missing(key) and getattr(detail, key, None):
+                    for key in REMINDER_DETAIL_FIELDS:
+                        if _missing_reminder_field(activity, key) and getattr(
+                            detail, key, None
+                        ):
                             data[key] = getattr(detail, key)
                     activity = Activity(**data)
                 except (AuthError, RiskControlError):

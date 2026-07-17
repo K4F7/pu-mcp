@@ -348,9 +348,26 @@ def test_web_error_handler_maps_risk_and_business_errors():
 def test_web_reminders_endpoint_whitelists_fields_and_serializes_datetime():
     class ReminderService(MockService):
         async def reminders(self):
-            return [Activity(activity_id="A", title="T", start_time=datetime(2026, 1, 1, tzinfo=UTC), raw={"secret": "x"})]
+            return [
+                Activity(
+                    activity_id="A",
+                    title="T",
+                    start_time=datetime(2026, 1, 1, tzinfo=UTC),
+                    raw={"secret": "x"},
+                )
+            ]
+
     response = TestClient(create_app(ReminderService())).get("/api/reminders")
-    assert set(response.json()[0]) == {"activity_id", "title", "activity_type", "location", "start_time", "end_time", "organizer", "status"}
+    assert set(response.json()[0]) == {
+        "activity_id",
+        "title",
+        "activity_type",
+        "location",
+        "start_time",
+        "end_time",
+        "organizer",
+        "status",
+    }
     assert response.json()[0]["start_time"].endswith("Z")
     assert "secret" not in response.text
 

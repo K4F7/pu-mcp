@@ -54,6 +54,7 @@ label { display:grid; gap:5px; color:var(--muted); font-size:.85rem; }
 .card { background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:16px; box-shadow:var(--shadow); }
 .card h2 { font-size:1.1rem; }
 .reminder-meta { display:grid; gap:3px; margin-top:10px; color:var(--muted); font-size:.9rem; }
+.reminder-countdown { color:var(--accent-strong); font-size:1rem; }
 .card-head { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
 .badge,.status { display:inline-flex; align-items:center; min-height:26px; padding:3px 8px; border-radius:999px; background:var(--accent-soft); color:var(--accent); font-size:.78rem; }
 .status { border:1px solid var(--line); background:var(--panel); }

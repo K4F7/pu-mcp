@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "build": "tsc && bun build --target=browser --minify --format=esm --outdir=src/pu_tool/web_static src/pu_tool/web_static/reminders.ts",
+    "build": "tsc --noEmit && bun build --target=browser --minify --format=esm --outdir=src/pu_tool/web_static src/pu_tool/web_static/app.ts src/pu_tool/web_static/reminders.ts",
+    "test": "bun test tests/reminder_time.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

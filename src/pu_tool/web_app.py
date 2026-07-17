@@ -248,9 +248,21 @@ def create_app(service: PuService | None = None, scheduler=None) -> FastAPI:
         return [item.model_dump(mode="json") for item in await svc.joined_activities()]
 
     @app.get("/api/reminders")
-    async def reminders(svc: PuService = Depends(get_service)):
-        fields = ("activity_id", "title", "activity_type", "location", "start_time", "end_time", "organizer", "status")
-        return [{k: item.model_dump(mode="json").get(k) for k in fields} for item in await svc.reminders()]
+    async def reminders(svc: PuService = Depends(get_service)):  # noqa: B008
+        fields = (
+            "activity_id",
+            "title",
+            "activity_type",
+            "location",
+            "start_time",
+            "end_time",
+            "organizer",
+            "status",
+        )
+        return [
+            {key: item.model_dump(mode="json").get(key) for key in fields}
+            for item in await svc.reminders()
+        ]
 
     @app.get("/api/activities/{activity_id}")
     async def activity_detail(

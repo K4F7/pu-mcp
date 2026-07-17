@@ -192,10 +192,22 @@ async def test_service_reminders_detail_only_fills_missing_fields(tmp_path):
             return {"data": [{"activityId": "A", "title": "joined", "location": "room"}]}
 
         async def activity_info(self, activity_id):
-            return {"data": {"activityId": activity_id, "title": "detail", "activityType": "type", "location": "detail-room", "organizer": "org"}}
+            return {
+                "data": {
+                    "activityId": activity_id,
+                    "title": "detail",
+                    "activityType": "type",
+                    "location": "detail-room",
+                    "organizer": "org",
+                }
+            }
 
     client = ReminderClient(lambda _: {})
-    service = PuService(client=client, storage=Storage(tmp_path / "r.sqlite"), session_store=MemorySessionStore())
+    service = PuService(
+        client=client,
+        storage=Storage(tmp_path / "r.sqlite"),
+        session_store=MemorySessionStore(),
+    )
     result = await service.reminders()
     assert result[0].title == "joined"
     assert result[0].location == "room"
@@ -209,10 +221,20 @@ async def test_service_reminders_propagates_auth_and_risk_errors(tmp_path):
 
     for error in (AuthError("expired"), RiskControlError("captcha")):
         class ErrorClient(FakeClient):
+            def __init__(self, fixture_json, reminder_error):
+                super().__init__(fixture_json)
+                self.reminder_error = reminder_error
+
             async def my_list(self):
                 return {"data": [{"activityId": "A", "title": "joined"}]}
+
             async def activity_info(self, activity_id):
-                raise error
-        service = PuService(client=ErrorClient(lambda _: {}), storage=Storage(tmp_path / f"{type(error).__name__}.sqlite"), session_store=MemorySessionStore())
+                raise self.reminder_error
+
+        service = PuService(
+            client=ErrorClient(lambda _: {}, error),
+            storage=Storage(tmp_path / f"{type(error).__name__}.sqlite"),
+            session_store=MemorySessionStore(),
+        )
         with pytest.raises(type(error)):
             await service.reminders()
