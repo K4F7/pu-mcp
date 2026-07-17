@@ -13,6 +13,7 @@ def test_static_js_uses_safe_dom_rendering_helpers():
     assert "function renderPlans" in source
     assert "/api/signup/plans" in source
     assert 'method:"DELETE"' in source
+    assert "if(x==null||x===false)return" in source
 
 
 def test_static_js_does_not_interpolate_untrusted_activity_fields_into_inner_html():
@@ -38,6 +39,27 @@ def test_settings_login_collects_school_identifier_and_shows_server_message():
     assert "loginSchoolPayload(school.value)" in source
     assert "学校 SID 或 class 登录链接" in source
     assert "data?.error?.message" in source
+
+
+def test_activity_list_links_to_details_and_exposes_discovery_filters():
+    source = APP_TS.read_text(encoding="utf-8")
+    for token in (
+        "filterActivities",
+        "搜索标题、ID、地点或组织方",
+        "活动类型",
+        "活动状态",
+        "显示 ${x.length} / ${a.length} 个活动",
+        "`/activities/${encodeURIComponent(i.activity_id)}`",
+    ):
+        assert token in source
+
+
+def test_activity_detail_shows_participation_information_and_plan_feedback():
+    source = APP_TS.read_text(encoding="utf-8")
+    for label in ("活动时间", "报名窗口", "地点", "组织方", "奖励", "活动 ID"):
+        assert label in source
+    assert "计划已创建。" in source
+    assert "前往计划页" in source
 
 
 def test_reminders_static_contract_is_safe_and_retries():
