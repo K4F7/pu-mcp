@@ -33,6 +33,13 @@ def test_static_js_submits_datetime_local_as_iso_string():
     assert "new Date(runAt.value).toISOString()" in source
 
 
+def test_settings_login_collects_school_identifier_and_shows_server_message():
+    source = APP_TS.read_text(encoding="utf-8")
+    assert "loginSchoolPayload(school.value)" in source
+    assert "学校 SID 或 class 登录链接" in source
+    assert "data?.error?.message" in source
+
+
 def test_reminders_static_contract_is_safe_and_retries():
     source = (STATIC_PATH / "reminders.ts").read_text(encoding="utf-8")
     tokens = (

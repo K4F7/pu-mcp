@@ -23,6 +23,12 @@ def test_decode_school_sid_from_class_login_url():
     )
 
 
+@pytest.mark.parametrize("value", ["not-base64!", "YWJj"])
+def test_decode_school_sid_rejects_invalid_input(value):
+    with pytest.raises(ValueError, match="invalid encoded sid"):
+        decode_school_sid(value)
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_login_success_extracts_session(fixture_json):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import time
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -30,12 +31,18 @@ def decode_school_sid(encoded_sid: str) -> str:
             value = sid_values[0]
             break
 
-    decoded = base64.b64decode(value).decode("utf-8")
+    try:
+        decoded = base64.b64decode(value, validate=True).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError) as exc:
+        raise ValueError("invalid encoded sid or class login URL") from exc
     chars = [
         chr(ord(char) ^ ord(SID_XOR_KEY[index % len(SID_XOR_KEY)]))
         for index, char in enumerate(decoded)
     ]
-    return "".join(chars)
+    school_sid = "".join(chars)
+    if not school_sid.isdigit():
+        raise ValueError("invalid encoded sid or class login URL")
+    return school_sid
 
 
 class PuClient:

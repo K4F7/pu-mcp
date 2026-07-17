@@ -166,6 +166,26 @@ def test_web_auth_login_decodes_encoded_sid():
     assert service.login_call["school_sid"] == "237791864815616"
 
 
+def test_web_auth_login_rejects_invalid_school_sid_cleanly():
+    client = TestClient(create_app(MockService()))
+
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "u", "password": "p", "sid": "not-numeric"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == "school sid must contain digits only"
+
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "u", "password": "p", "encoded_sid": "not-base64!"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == (
+        "invalid encoded sid or class login URL"
+    )
+
+
 def test_web_auth_web_login_route_is_removed():
     client = TestClient(create_app(MockService()))
     response = client.post(

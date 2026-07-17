@@ -224,7 +224,12 @@ def create_app(service: PuService | None = None, scheduler=None) -> FastAPI:
     async def login(payload: LoginRequest, svc: PuService = Depends(get_service)):  # noqa: B008
         if bool(payload.sid) == bool(payload.encoded_sid):
             raise ValueError("provide exactly one school sid: sid or encoded_sid")
-        school_sid = payload.sid or decode_school_sid(payload.encoded_sid or "")
+        if payload.sid:
+            school_sid = payload.sid.strip()
+            if not school_sid.isdigit():
+                raise ValueError("school sid must contain digits only")
+        else:
+            school_sid = decode_school_sid(payload.encoded_sid or "")
         session = await svc.login(payload.username, payload.password, school_sid)
         return {"authenticated": True, "user": session.masked_user}
 
