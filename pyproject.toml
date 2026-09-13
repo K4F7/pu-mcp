@@ -5,12 +5,10 @@ build-backend = "hatchling.build"
 [project]
 name = "pu-tool"
 version = "0.1.0"
-description = "Local-only PU Pocket Campus CLI and web helper"
+description = "Local-only PU Pocket Campus CLI"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "apscheduler>=3.10",
-  "fastapi>=0.110",
   "httpx>=0.27",
   "keyring>=25",
   "pydantic>=2.7",
@@ -18,7 +16,6 @@ dependencies = [
   "rich>=13.7",
   "sqlalchemy>=2.0",
   "typer>=0.12",
-  "uvicorn>=0.29",
 ]
 
 [project.optional-dependencies]

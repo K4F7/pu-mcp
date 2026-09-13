@@ -1,3 +1,3 @@
-"""PU local CLI and web helper."""
+"""PU local CLI helper."""
 
 __version__ = "0.1.0"

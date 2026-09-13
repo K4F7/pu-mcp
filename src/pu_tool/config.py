@@ -24,5 +24,3 @@ class Settings(BaseSettings):
     max_retries: int = Field(2, alias="PU_MAX_RETRIES")
     activity_cache_ttl_seconds: float = Field(300, alias="PU_ACTIVITY_CACHE_TTL_SECONDS")
     max_signup_attempts: int = Field(3, alias="PU_MAX_SIGNUP_ATTEMPTS")
-    web_host: str = Field("127.0.0.1", alias="PU_WEB_HOST")
-    web_port: int = Field(8000, alias="PU_WEB_PORT")

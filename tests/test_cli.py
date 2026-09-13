@@ -80,6 +80,17 @@ class MockService:
     def list_signup_attempts(self, plan_id=None):
         return []
 
+    async def execute_signup_plan(self, plan_id):
+        from pu_tool.models import SignupAttempt
+
+        return SignupAttempt(
+            attempt_id=1,
+            plan_id=plan_id,
+            activity_id="ACT-1001",
+            status="succeeded",
+            message="报名成功",
+        )
+
 
 def test_cli_help_works():
     result = runner.invoke(cli.app, ["--help"])
@@ -218,7 +229,7 @@ def test_cli_login_decodes_encoded_sid_from_class_url_without_printing_password(
     assert "fake-password" not in result.output
 
 
-def test_cli_signup_schedule_explains_serve_required(monkeypatch):
+def test_cli_signup_schedule_points_to_signup_run(monkeypatch):
     monkeypatch.setattr(cli, "build_service", lambda: MockService())
     result = runner.invoke(
         cli.app,
@@ -231,7 +242,16 @@ def test_cli_signup_schedule_explains_serve_required(monkeypatch):
         ],
     )
     assert result.exit_code == 0
-    assert "pu serve" in result.output
+    assert "pu signup run 1" in result.output.replace("\n", " ")
+    assert "pu serve" not in result.output
+
+
+def test_cli_signup_run_prints_attempt_json(monkeypatch):
+    monkeypatch.setattr(cli, "build_service", lambda: MockService())
+    result = runner.invoke(cli.app, ["signup", "run", "1"])
+    assert result.exit_code == 0
+    assert '"status": "succeeded"' in result.output
+    assert "报名成功" in result.output
 
 
 def test_cli_signup_schedule_normalizes_naive_at_to_local_aware(monkeypatch):

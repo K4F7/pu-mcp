@@ -6,21 +6,19 @@ from datetime import datetime
 from typing import Annotated
 
 import typer
-import uvicorn
 from rich.console import Console
 from rich.table import Table
 
-from pu_tool.config import Settings
 from pu_tool.errors import PuToolError, RiskControlError
 from pu_tool.models import Activity
 from pu_tool.pu_client import decode_school_sid
 from pu_tool.service import build_service
 from pu_tool.time_utils import ensure_aware_local
 
-app = typer.Typer(help="PU 本地 CLI + Web 工具，仅用于本人账号。")
+app = typer.Typer(help="PU 本地 CLI，仅用于本人账号。网页已归档到 archive_frontend。")
 auth_app = typer.Typer(help="认证状态")
 activities_app = typer.Typer(help="活动浏览")
-signup_app = typer.Typer(help="低频定时报名计划")
+signup_app = typer.Typer(help="待抢计划；到点由外部调度调用 run")
 
 app.add_typer(auth_app, name="auth")
 app.add_typer(activities_app, name="activities")
@@ -194,7 +192,8 @@ def signup_schedule(
         _print_error(exc)
         raise typer.Exit(1) from exc
     console.print(json.dumps(plan.model_dump(mode="json"), ensure_ascii=False, indent=2))
-    console.print("计划已创建；请保持 `pu serve` 运行，定时报名调度器才会执行该计划。")
+    console.print("计划已创建。到点抢请让 agent 在 Hermes/OpenClaw 登记无模型任务：")
+    console.print(f"pu signup run {plan.plan_id}")
 
 
 @signup_app.command("plans")
@@ -240,6 +239,17 @@ def signup_cancel(plan_id: int) -> None:
     console.print(json.dumps(plan.model_dump(mode="json"), ensure_ascii=False, indent=2))
 
 
+@signup_app.command("run")
+def signup_run(plan_id: int) -> None:
+    """无模型一次执行报名，给 Hermes/OpenClaw 调度调用。"""
+    try:
+        attempt = _run(build_service().execute_signup_plan(plan_id))
+    except (ValueError, PuToolError, KeyError) as exc:
+        _print_error(exc)
+        raise typer.Exit(1) from exc
+    console.print(json.dumps(attempt.model_dump(mode="json"), ensure_ascii=False, indent=2))
+
+
 @signup_app.command("attempts")
 def signup_attempts(
     plan_id: Annotated[int | None, typer.Option("--plan-id")] = None,
@@ -277,10 +287,3 @@ def signup_attempts(
     console.print(table)
 
 
-@app.command()
-def serve(
-    host: Annotated[str, typer.Option("--host")] = Settings().web_host,
-    port: Annotated[int, typer.Option("--port")] = Settings().web_port,
-) -> None:
-    """启动本地 Web，默认只绑定 127.0.0.1。"""
-    uvicorn.run("pu_tool.web_app:create_app", host=host, port=port, factory=True)

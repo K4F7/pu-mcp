@@ -10,7 +10,6 @@ from pu_tool.models import SignupPlan
 def test_settings_defaults_are_conservative():
     settings = Settings()
     assert settings.base_url == "https://apis.pocketuni.net"
-    assert settings.web_host == "127.0.0.1"
     assert settings.max_retries == 2
     assert settings.max_signup_attempts == 3
 
