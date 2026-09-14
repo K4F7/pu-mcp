@@ -31,7 +31,7 @@ async def test_login_success_extracts_session(fixture_json):
     )
     async with PuClient(base_url="https://mock.local", min_interval_seconds=0) as client:
         session = await client.login("demo", "secret", school_sid="237791864815616")
-    assert session.token == "TEST_TOKEN"
+    assert session.token == "test-token-abcdef123456"
     assert session.sid == "test-sid-654321"
     assert session.masked_user == "demo_account"
     assert route.calls[0].request.headers["content-type"].startswith("application/json")
@@ -78,6 +78,27 @@ async def test_class_login_uses_base_user_info_when_user_account_missing():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_school_list_get_is_unauthenticated(fixture_json):
+    route = respx.get("https://mock.local/uc/school/list").mock(
+        return_value=httpx.Response(200, json=fixture_json("school_list.json"))
+    )
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    async with PuClient(
+        base_url="https://mock.local", session=session, min_interval_seconds=0
+    ) as client:
+        schools = await client.school_list()
+    assert schools[0] == {
+        "id": "237791864815616",
+        "name": "南昌大学",
+        "short": "ncu",
+        "casUrl": "https://cas.example.edu.cn/ncu",
+    }
+    assert "Authorization" not in route.calls[0].request.headers
+    assert route.calls[0].request.method == "GET"
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_authenticated_activity_calls_send_authorization(fixture_json):
     route = respx.post("https://mock.local/apis/activity/list").mock(
         return_value=httpx.Response(200, json=fixture_json("activity_list.json"))
@@ -88,10 +109,7 @@ async def test_authenticated_activity_calls_send_authorization(fixture_json):
     ) as client:
         payload = await client.activity_list()
     assert payload["code"] == 0
-    assert (
-        route.calls[0].request.headers["Authorization"]
-        == "Bearer TEST_TOKEN:TEST_SID"
-    )
+    assert route.calls[0].request.headers["Authorization"] == "Bearer TEST_TOKEN:TEST_SID"
 
 
 @pytest.mark.asyncio

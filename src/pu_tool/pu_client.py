@@ -79,8 +79,9 @@ class PuClient:
             raise AuthError("not authenticated")
         return {"Authorization": f"Bearer {self.session.token}:{self.session.sid}"}
 
-    async def _post(
+    async def _request(
         self,
+        method: str,
         path: str,
         payload: dict[str, Any] | None = None,
         *,
@@ -92,11 +93,10 @@ class PuClient:
             try:
                 async with self._request_lock:
                     await self._throttle()
-                    response = await self._client.post(
-                        path,
-                        json=payload or {},
-                        headers=self._headers(authenticated),
-                    )
+                    kwargs: dict[str, Any] = {"headers": self._headers(authenticated)}
+                    if method.upper() != "GET":
+                        kwargs["json"] = payload or {}
+                    response = await self._client.request(method, path, **kwargs)
                 if response.status_code >= 500:
                     if attempt < attempts - 1:
                         await asyncio.sleep(0.05 * (2**attempt))
@@ -118,6 +118,23 @@ class PuClient:
                     continue
                 raise NetworkError(str(exc)) from exc
         raise NetworkError(str(last_error or "network error"))
+
+    async def _post(
+        self,
+        path: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        authenticated: bool = True,
+    ) -> dict[str, Any]:
+        return await self._request("POST", path, payload, authenticated=authenticated)
+
+    async def _get(
+        self,
+        path: str,
+        *,
+        authenticated: bool = True,
+    ) -> dict[str, Any]:
+        return await self._request("GET", path, authenticated=authenticated)
 
     def _raise_for_payload(self, data: dict[str, Any]) -> None:
         code = data.get("code", 0)
@@ -155,6 +172,11 @@ class PuClient:
         )
         self.session = session
         return session
+
+    async def school_list(self) -> list[dict[str, Any]]:
+        data = await self._get("/uc/school/list", authenticated=False)
+        payload = data.get("data") or {}
+        return list(payload.get("list") or [])
 
     async def activity_list(self, **filters: Any) -> dict[str, Any]:
         payload = {"page": 1, "limit": 20, **filters}

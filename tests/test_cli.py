@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 from typer.testing import CliRunner
@@ -80,11 +81,53 @@ class MockService:
     def list_signup_attempts(self, plan_id=None):
         return []
 
+    async def search_schools(self, keyword, limit=20):
+        if not str(keyword or "").strip():
+            raise ValueError("keyword must not be empty")
+        self.search_keyword = keyword
+        self.search_limit = limit
+        return [
+            {
+                "id": "237791864815616",
+                "name": "南昌大学",
+                "short": "ncu",
+                "casUrl": "https://cas.example.edu.cn/ncu",
+            },
+            {
+                "id": "111222333444555",
+                "name": "南昌航空大学",
+                "short": "nchu",
+                "casUrl": "https://cas.example.edu.cn/nchu",
+            },
+        ]
+
 
 def test_cli_help_works():
     result = runner.invoke(cli.app, ["--help"])
     assert result.exit_code == 0
     assert "activities" in result.output
+    assert "mcp" in result.output
+
+
+def test_cli_school_search_json_matches_mcp_shape(monkeypatch):
+    monkeypatch.setattr(cli, "build_service", lambda: MockService())
+    result = runner.invoke(cli.app, ["school", "search", "南昌", "--json"])
+    assert result.exit_code == 0
+    assert '"schools"' in result.output
+    assert '"id": "237791864815616"' in result.output
+    assert '"name": "南昌大学"' in result.output
+    assert '"short": "ncu"' in result.output
+    assert '"casUrl": "https://cas.example.edu.cn/ncu"' in result.output
+    assert '"id": "111222333444555"' in result.output
+    assert '"name": "南昌航空大学"' in result.output
+
+
+def test_cli_school_search_rejects_empty_keyword(monkeypatch):
+    monkeypatch.setattr(cli, "build_service", lambda: MockService())
+    result = runner.invoke(cli.app, ["school", "search", "   ", "--json"])
+    assert result.exit_code == 1
+    assert "Traceback" not in result.output
+    assert "empty" in result.output
 
 
 def test_cli_activity_list_displays_type_and_scores(monkeypatch):
@@ -139,6 +182,44 @@ def test_cli_auth_status_masks_secret(monkeypatch):
     result = runner.invoke(cli.app, ["auth", "status"])
     assert result.exit_code == 0
     assert "abcdef123456" not in result.output
+
+
+def test_cli_login_rejects_chinese_school_name_as_sid(monkeypatch):
+    captured = {}
+
+    class CapturingService(MockService):
+        async def login(self, username, password, school_sid):
+            captured["called"] = True
+            return AuthSession(token="tok", sid="sid", masked_user=username)
+
+    monkeypatch.setattr(cli, "build_service", lambda: CapturingService())
+    result = runner.invoke(
+        cli.app,
+        [
+            "login",
+            "--username",
+            "fake-number",
+            "--sid",
+            "南昌大学",
+            "--password",
+            "fake-password",
+        ],
+    )
+    assert result.exit_code == 1
+    assert captured == {}
+    assert "Traceback" not in result.output
+    assert "sid" in result.output.lower()
+    assert "fake-password" not in result.output
+
+
+def test_cli_login_help_has_no_school_name_argument():
+    result = runner.invoke(cli.app, ["login", "--help"])
+    assert result.exit_code == 0
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert "--sid" in plain
+    assert "--encoded-sid" in plain
+    assert "--school-name" not in plain
+    assert "校名" not in plain
 
 
 def test_cli_login_uses_numeric_school_sid_without_printing_password(monkeypatch):

@@ -1,0 +1,4 @@
+[mcp_servers.pu]
+command = "uv"
+args = ["run", "--python", "3.12", "--no-sync", "pu", "mcp"]
+startup_timeout_sec = 60
