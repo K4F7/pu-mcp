@@ -53,6 +53,29 @@ class PuService:
         if hasattr(self.client, "session"):
             self.client.session = None
 
+    async def search_schools(self, keyword: str, limit: int = 20) -> list[dict[str, object]]:
+        needle = str(keyword or "").strip()
+        if not needle:
+            raise ValueError("keyword must not be empty")
+        lowered = needle.lower()
+        matched: list[dict[str, object]] = []
+        for item in await self.client.school_list():
+            name = str(item.get("name") or "")
+            short = str(item.get("short") or "")
+            if lowered not in name.lower() and lowered not in short.lower():
+                continue
+            matched.append(
+                {
+                    "id": item.get("id"),
+                    "name": item.get("name"),
+                    "short": item.get("short"),
+                    "casUrl": item.get("casUrl"),
+                }
+            )
+            if len(matched) >= limit:
+                break
+        return matched
+
     async def list_activities(
         self,
         *,
@@ -138,9 +161,7 @@ class PuService:
                 if keyword in activity.activity_id.lower() or keyword in activity.title.lower()
             ]
         if activity_type:
-            result = [
-                activity for activity in result if activity.activity_type == activity_type
-            ]
+            result = [activity for activity in result if activity.activity_type == activity_type]
         return result
 
 

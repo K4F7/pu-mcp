@@ -1,0 +1,32 @@
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "list": [
+      {
+        "id": "237791864815616",
+        "name": "南昌大学",
+        "short": "ncu",
+        "casUrl": "https://cas.example.edu.cn/ncu"
+      },
+      {
+        "id": "111222333444555",
+        "name": "南昌航空大学",
+        "short": "nchu",
+        "casUrl": "https://cas.example.edu.cn/nchu"
+      },
+      {
+        "id": "555444333222111",
+        "name": "江西师范大学",
+        "short": "jxnu",
+        "casUrl": "https://cas.example.edu.cn/jxnu"
+      },
+      {
+        "id": "999888777666555",
+        "name": "华东交通大学",
+        "short": "ecjtu",
+        "casUrl": "https://cas.example.edu.cn/ecjtu"
+      }
+    ]
+  }
+}

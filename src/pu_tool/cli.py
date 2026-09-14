@@ -19,10 +19,12 @@ from pu_tool.time_utils import ensure_aware_local
 
 app = typer.Typer(help="PU 本地 CLI + Web 工具，仅用于本人账号。")
 auth_app = typer.Typer(help="认证状态")
+school_app = typer.Typer(help="学校查询")
 activities_app = typer.Typer(help="活动浏览")
 signup_app = typer.Typer(help="低频定时报名计划")
 
 app.add_typer(auth_app, name="auth")
+app.add_typer(school_app, name="school")
 app.add_typer(activities_app, name="activities")
 app.add_typer(signup_app, name="signup")
 
@@ -63,6 +65,9 @@ def login(
     if bool(sid) == bool(encoded_sid):
         console.print("[red]请提供且只提供一个学校 SID：--sid 或 --encoded-sid。[/red]")
         raise typer.Exit(1)
+    if sid is not None and not sid.isdigit():
+        console.print("[red]学校 SID 必须是数字；请先用 `pu school search` 按校名查询。[/red]")
+        raise typer.Exit(1)
     school_sid = sid or decode_school_sid(encoded_sid or "")
     try:
         session = _run(build_service().login(username, password, school_sid))
@@ -77,6 +82,35 @@ def auth_status() -> None:
     """显示脱敏认证状态。"""
     status = build_service().auth_status()
     console.print(json.dumps(status, ensure_ascii=False, indent=2))
+
+
+@school_app.command("search")
+def school_search(
+    keyword: str,
+    limit: Annotated[int, typer.Option("--limit", min=1)] = 20,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """按校名或简称查询学校 sid。未登录可调。"""
+    try:
+        schools = _run(build_service().search_schools(keyword, limit=limit))
+    except (PuToolError, ValueError) as exc:
+        _print_error(exc)
+        raise typer.Exit(1) from exc
+    payload = {"schools": schools}
+    if json_output:
+        console.print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    table = Table(title="学校查询")
+    table.add_column("sid")
+    table.add_column("名称")
+    table.add_column("简称")
+    for item in schools:
+        table.add_row(
+            str(item.get("id") or ""),
+            str(item.get("name") or ""),
+            str(item.get("short") or ""),
+        )
+    console.print(table)
 
 
 @activities_app.command("list")
@@ -275,6 +309,14 @@ def signup_attempts(
             attempt.message,
         )
     console.print(table)
+
+
+@app.command("mcp")
+def mcp_stdio() -> None:
+    """以 stdio 启动 MCP，供 agent 查询学校 sid 与登录状态。"""
+    from pu_tool.mcp_server import run_stdio
+
+    run_stdio()
 
 
 @app.command()

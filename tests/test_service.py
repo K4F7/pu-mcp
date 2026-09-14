@@ -57,6 +57,9 @@ class FakeClient:
         self.join_calls += 1
         return {"code": 0, "msg": "报名成功"}
 
+    async def school_list(self):
+        return self.fixture_json("school_list.json")["data"]["list"]
+
 
 @pytest.mark.asyncio
 async def test_service_login_stores_session_and_masks_status(tmp_path):
@@ -93,6 +96,88 @@ async def test_service_login_stores_auth_sid_from_response_not_school_sid(tmp_pa
     assert session.sid == "test-sid-654321"
     assert store.load().sid == "test-sid-654321"
     assert store.load().sid != "237791864815616"
+
+
+@pytest.mark.asyncio
+async def test_search_schools_rejects_empty_keyword(fixture_json, tmp_path):
+    service = PuService(
+        client=FakeClient(fixture_json),
+        storage=Storage(tmp_path / "pu.sqlite"),
+        session_store=MemorySessionStore(),
+    )
+    with pytest.raises(ValueError, match="empty"):
+        await service.search_schools("")
+
+
+@pytest.mark.asyncio
+async def test_search_schools_nanchang_returns_multi_hit_list(fixture_json, tmp_path):
+    service = PuService(
+        client=FakeClient(fixture_json),
+        storage=Storage(tmp_path / "pu.sqlite"),
+        session_store=MemorySessionStore(),
+    )
+    schools = await service.search_schools("南昌")
+    assert schools == [
+        {
+            "id": "237791864815616",
+            "name": "南昌大学",
+            "short": "ncu",
+            "casUrl": "https://cas.example.edu.cn/ncu",
+        },
+        {
+            "id": "111222333444555",
+            "name": "南昌航空大学",
+            "short": "nchu",
+            "casUrl": "https://cas.example.edu.cn/nchu",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_schools_matches_pinyin_short(fixture_json, tmp_path):
+    service = PuService(
+        client=FakeClient(fixture_json),
+        storage=Storage(tmp_path / "pu.sqlite"),
+        session_store=MemorySessionStore(),
+    )
+    schools = await service.search_schools("ncu")
+    assert schools == [
+        {
+            "id": "237791864815616",
+            "name": "南昌大学",
+            "short": "ncu",
+            "casUrl": "https://cas.example.edu.cn/ncu",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_schools_rejects_whitespace_keyword(fixture_json, tmp_path):
+    service = PuService(
+        client=FakeClient(fixture_json),
+        storage=Storage(tmp_path / "pu.sqlite"),
+        session_store=MemorySessionStore(),
+    )
+    with pytest.raises(ValueError, match="empty"):
+        await service.search_schools("   ")
+
+
+@pytest.mark.asyncio
+async def test_search_schools_limit_caps_results(fixture_json, tmp_path):
+    service = PuService(
+        client=FakeClient(fixture_json),
+        storage=Storage(tmp_path / "pu.sqlite"),
+        session_store=MemorySessionStore(),
+    )
+    schools = await service.search_schools("南昌", limit=1)
+    assert schools == [
+        {
+            "id": "237791864815616",
+            "name": "南昌大学",
+            "short": "ncu",
+            "casUrl": "https://cas.example.edu.cn/ncu",
+        }
+    ]
 
 
 @pytest.mark.asyncio
