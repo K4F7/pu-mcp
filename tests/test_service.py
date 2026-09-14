@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from pu_tool.errors import BusinessError
 from pu_tool.models import AuthSession
 from pu_tool.service import PuService
 from pu_tool.storage import Storage
@@ -24,9 +25,11 @@ class MemorySessionStore:
 
 
 class FakeClient:
-    def __init__(self, fixture_json):
+    def __init__(self, fixture_json, my_list_payload=None):
         self.fixture_json = fixture_json
+        self.my_list_payload = my_list_payload
         self.join_calls = 0
+        self.joined_activity_ids = []
         self.activity_list_calls = 0
         self.activity_list_filters = []
         self.activity_info_calls = 0
@@ -51,10 +54,13 @@ class FakeClient:
         return self.fixture_json("activity_info_credit.json")
 
     async def my_list(self):
+        if self.my_list_payload is not None:
+            return self.my_list_payload
         return self.fixture_json("my_list_joined.json")
 
     async def join_activity(self, activity_id):
         self.join_calls += 1
+        self.joined_activity_ids.append(activity_id)
         return {"code": 0, "msg": "报名成功"}
 
     async def school_list(self):
@@ -194,6 +200,17 @@ async def test_service_lists_and_details_activities(fixture_json, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_service_list_activities_does_not_filter_volunteer_or_non_gap_types(
+    fixture_json, tmp_path
+):
+    service = _make_service(FakeClient(fixture_json), tmp_path)
+    activities = await service.list_activities()
+    types = {item.activity_type for item in activities}
+    assert "志愿公益" in types
+    assert "学术讲座" in types
+
+
+@pytest.mark.asyncio
 async def test_service_activity_list_defaults_to_page_and_limit(fixture_json, tmp_path):
     client = FakeClient(fixture_json)
     service = PuService(
@@ -268,3 +285,139 @@ async def test_service_skips_signup_if_already_joined(fixture_json, tmp_path):
     attempt = await service.execute_signup_plan(plan.plan_id)
     assert attempt.status == "skipped"
     assert client.join_calls == 0
+
+
+def _make_service(client, tmp_path) -> PuService:
+    return PuService(
+        client=client,
+        storage=Storage(tmp_path / "pu.sqlite"),
+        session_store=MemorySessionStore(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_service_join_activity_forwards_to_client_and_returns_payload(fixture_json, tmp_path):
+    client = FakeClient(fixture_json)
+    service = _make_service(client, tmp_path)
+
+    result = await service.join_activity("ACT-1001")
+
+    assert client.join_calls == 1
+    assert client.joined_activity_ids == ["ACT-1001"]
+    assert result == {"code": 0, "msg": "报名成功"}
+
+
+@pytest.mark.asyncio
+async def test_service_join_activity_propagates_business_error(fixture_json, tmp_path):
+    class FailingClient(FakeClient):
+        async def join_activity(self, activity_id):
+            self.join_calls += 1
+            self.joined_activity_ids.append(activity_id)
+            raise BusinessError("已报名该活动")
+
+    client = FailingClient(fixture_json)
+    service = _make_service(client, tmp_path)
+
+    with pytest.raises(BusinessError, match="已报名该活动"):
+        await service.join_activity("ACT-1001")
+    assert client.join_calls == 1
+    assert client.joined_activity_ids == ["ACT-1001"]
+
+
+def _joined_payload(items: list[dict]) -> dict:
+    return {"code": 0, "msg": "ok", "data": {"list": items}}
+
+
+def _joined_item(activity_id: str, title: str, activity_type: str, **fields: object) -> dict:
+    return {"id": activity_id, "title": title, "typeName": activity_type, **fields}
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        ({"signedIn": True}, True),
+        ({"signed_in": True}, True),
+        ({"isSign": "1"}, True),
+        ({"is_sign": "true"}, True),
+        ({"hasSign": "True"}, True),
+        ({"has_sign": "yes"}, True),
+        ({"signStatus": "YES"}, True),
+        ({"sign_status": "已签到"}, True),
+        ({"signIn": "现场已签到完成"}, True),
+        ({"sign_in": False}, False),
+        ({"signedIn": "0"}, False),
+        ({"signedIn": "false"}, False),
+        ({"signedIn": "False"}, False),
+        ({"signedIn": "no"}, False),
+        ({"signedIn": "NO"}, False),
+        ({"signedIn": "未签到"}, False),
+        ({"status": "已签到"}, True),
+        ({"state": "活动已签到"}, True),
+        ({}, False),
+        ({"signedIn": False, "status": "已签到"}, False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_service_joined_activities_parse_signed_in_from_pu_fields(
+    fixture_json, tmp_path, fields, expected
+):
+    payload = _joined_payload(
+        [_joined_item("ACT-2001", "签到合成活动", "校园文化", **fields)]
+    )
+    service = _make_service(FakeClient(fixture_json, my_list_payload=payload), tmp_path)
+
+    joined = await service.joined_activities()
+
+    assert joined[0].signed_in is expected
+
+
+@pytest.mark.asyncio
+async def test_service_attendance_counts_signed_in_countable_types_only(fixture_json, tmp_path):
+    payload = _joined_payload(
+        [
+            _joined_item("A1", "实践已签", "社会实践", signedIn=True),
+            _joined_item("A2", "实践未签", "社会实践", signedIn=False),
+            _joined_item("A3", "文化已签", "校园文化", isSign="1"),
+            _joined_item("A4", "引领已签", "思想引领", signStatus="已签到"),
+            _joined_item("A5", "讲座已签", "学术讲座", signed_in="true"),
+            _joined_item("A6", "讲座再签", "学术讲座", hasSign=True),
+            _joined_item("A7", "志愿已签", "志愿服务", signedIn=True),
+            _joined_item("A8", "双创已签", "创新创业", signedIn=True),
+            _joined_item("A9", "公益已签", "志愿公益", signedIn=True),
+            _joined_item("A10", "文化未签", "校园文化"),
+        ]
+    )
+    service = _make_service(FakeClient(fixture_json, my_list_payload=payload), tmp_path)
+
+    counts = await service.attendance_counts()
+
+    assert counts == {
+        "社会实践": 1,
+        "校园文化": 1,
+        "思想引领": 1,
+        "学科竞赛": 0,
+        "学术讲座": 2,
+        "体育健身": 0,
+    }
+    forbidden = (
+        "credits",
+        "effective",
+        "must_fill",
+        "必须补",
+        "已获",
+        "总有效分",
+        "阶段线",
+        "recommended_types",
+        "recommended",
+        "fillable",
+    )
+    blob = str(counts)
+    assert all(token not in blob for token in forbidden)
+    assert set(counts) == {
+        "社会实践",
+        "校园文化",
+        "思想引领",
+        "学科竞赛",
+        "学术讲座",
+        "体育健身",
+    }

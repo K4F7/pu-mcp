@@ -10,6 +10,15 @@ from pu_tool.security import KeyringSessionStore, SessionStore, mask_secret
 from pu_tool.storage import Storage
 from pu_tool.time_utils import ensure_aware_local
 
+COUNTABLE_ACTIVITY_TYPES = (
+    "社会实践",
+    "校园文化",
+    "思想引领",
+    "学科竞赛",
+    "学术讲座",
+    "体育健身",
+)
+
 
 class PuService:
     def __init__(
@@ -83,6 +92,7 @@ class PuService:
         cache_ttl_seconds: float | None = None,
         **filters: object,
     ) -> list[Activity]:
+        filters = {key: value for key, value in filters.items() if value is not None}
         filters = {"page": 1, "limit": 20, **filters}
         ttl = (
             self.settings.activity_cache_ttl_seconds
@@ -112,6 +122,16 @@ class PuService:
 
     async def joined_activities(self) -> list[Activity]:
         return parse_activity_list(await self.client.my_list())
+
+    async def join_activity(self, activity_id: str) -> dict:
+        return await self.client.join_activity(activity_id)
+
+    async def attendance_counts(self) -> dict[str, int]:
+        counts = {name: 0 for name in COUNTABLE_ACTIVITY_TYPES}
+        for activity in await self.joined_activities():
+            if activity.signed_in and activity.activity_type in counts:
+                counts[activity.activity_type] += 1
+        return counts
 
     def create_signup_plan(
         self,

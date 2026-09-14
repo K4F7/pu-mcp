@@ -16,6 +16,20 @@ SIGNUP_END_FIELDS = ("applyEndTime", "signup_end", "signupEndTime")
 LOCATION_FIELDS = ("address", "location", "place")
 ORGANIZER_FIELDS = ("organizer", "host", "clubName")
 STATUS_FIELDS = ("status", "state")
+SIGNED_IN_FIELDS = (
+    "signedIn",
+    "signed_in",
+    "isSign",
+    "is_sign",
+    "hasSign",
+    "has_sign",
+    "signStatus",
+    "sign_status",
+    "signIn",
+    "sign_in",
+)
+SIGNED_IN_TRUE = {True, "1", "true", "True", "yes", "YES", "已签到"}
+SIGNED_IN_FALSE = {False, "0", "false", "False", "no", "NO", "未签到"}
 
 SCORE_FIELDS: dict[str, tuple[str, str, str]] = {
     "score": ("credit", "加分", "分"),
@@ -93,6 +107,24 @@ def _score_items(raw: dict[str, Any]) -> list[ScoreItem]:
     return items
 
 
+def _parse_signed_in(raw: dict[str, Any]) -> bool:
+    for field in SIGNED_IN_FIELDS:
+        if field not in raw:
+            continue
+        value = raw[field]
+        if value in SIGNED_IN_TRUE:
+            return True
+        if isinstance(value, str) and "已签到" in value:
+            return True
+        if value in SIGNED_IN_FALSE:
+            return False
+    for field in STATUS_FIELDS:
+        value = raw.get(field)
+        if isinstance(value, str) and "已签到" in value:
+            return True
+    return False
+
+
 def parse_activity(raw: dict[str, Any]) -> Activity:
     activity_id = _first(raw, ID_FIELDS)
     title = _first(raw, TITLE_FIELDS)
@@ -111,6 +143,7 @@ def parse_activity(raw: dict[str, Any]) -> Activity:
         location=_first(raw, LOCATION_FIELDS),
         organizer=_first(raw, ORGANIZER_FIELDS),
         status=_first(raw, STATUS_FIELDS),
+        signed_in=_parse_signed_in(raw),
         credits=credits,
         score_items=score_items,
         raw=raw,

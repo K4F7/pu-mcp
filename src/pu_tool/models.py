@@ -37,6 +37,7 @@ class Activity(BaseModel):
     location: str | None = None
     organizer: str | None = None
     status: str | None = None
+    signed_in: bool = False
     credits: str | None = None
     score_items: list[ScoreItem] = Field(default_factory=list)
     raw: dict[str, Any] = Field(default_factory=dict)

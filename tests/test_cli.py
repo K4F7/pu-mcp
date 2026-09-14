@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime
 
@@ -81,6 +82,20 @@ class MockService:
     def list_signup_attempts(self, plan_id=None):
         return []
 
+    async def join_activity(self, activity_id):
+        self.joined_id = activity_id
+        return {"code": 0, "msg": "报名成功"}
+
+    async def attendance_counts(self):
+        return {
+            "社会实践": 0,
+            "校园文化": 1,
+            "思想引领": 0,
+            "学科竞赛": 0,
+            "学术讲座": 0,
+            "体育健身": 0,
+        }
+
     async def search_schools(self, keyword, limit=20):
         if not str(keyword or "").strip():
             raise ValueError("keyword must not be empty")
@@ -102,11 +117,39 @@ class MockService:
         ]
 
 
+def _plain(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
 def test_cli_help_works():
     result = runner.invoke(cli.app, ["--help"])
     assert result.exit_code == 0
-    assert "activities" in result.output
-    assert "mcp" in result.output
+    plain = _plain(result.output)
+    assert "activities" in plain
+    assert "mcp" in plain
+    assert "schools" in plain
+    assert "erke" in plain
+    assert "signup" not in plain.lower()
+    assert "serve" not in plain.lower()
+    activities = runner.invoke(cli.app, ["activities", "--help"])
+    assert activities.exit_code == 0
+    assert "join" in _plain(activities.output)
+    schools = runner.invoke(cli.app, ["schools", "--help"])
+    assert schools.exit_code == 0
+    assert "search" in _plain(schools.output)
+
+
+def test_cli_schools_search_json_matches_mcp_shape(monkeypatch):
+    monkeypatch.setattr(cli, "build_service", lambda: MockService())
+    result = runner.invoke(cli.app, ["schools", "search", "南昌", "--json"])
+    assert result.exit_code == 0
+    assert '"schools"' in result.output
+    assert '"id": "237791864815616"' in result.output
+    assert '"name": "南昌大学"' in result.output
+    assert '"short": "ncu"' in result.output
+    assert '"casUrl": "https://cas.example.edu.cn/ncu"' in result.output
+    assert '"id": "111222333444555"' in result.output
+    assert '"name": "南昌航空大学"' in result.output
 
 
 def test_cli_school_search_json_matches_mcp_shape(monkeypatch):
@@ -299,74 +342,90 @@ def test_cli_login_decodes_encoded_sid_from_class_url_without_printing_password(
     assert "fake-password" not in result.output
 
 
-def test_cli_signup_schedule_explains_serve_required(monkeypatch):
+def test_cli_activities_join_calls_service(monkeypatch):
+    service = MockService()
+    monkeypatch.setattr(cli, "build_service", lambda: service)
+    result = runner.invoke(cli.app, ["activities", "join", "ACT-1001"])
+    assert result.exit_code == 0
+    assert service.joined_id == "ACT-1001"
+    assert '"msg": "报名成功"' in result.output
+
+
+def test_cli_activities_join_prints_business_error_without_traceback(monkeypatch):
+    class FailingService(MockService):
+        async def join_activity(self, activity_id):
+            raise BusinessError("已报名该活动")
+
+    monkeypatch.setattr(cli, "build_service", lambda: FailingService())
+    result = runner.invoke(cli.app, ["activities", "join", "ACT-1001"])
+    assert result.exit_code == 1
+    assert "Traceback" not in result.output
+    assert "已报名该活动" in result.output
+
+
+def test_cli_erke_prints_attendance_counts_only(monkeypatch):
     monkeypatch.setattr(cli, "build_service", lambda: MockService())
-    result = runner.invoke(
-        cli.app,
-        [
-            "signup",
-            "schedule",
-            "ACT-1001",
-            "--at",
-            "2026-06-08T18:30:00+00:00",
-        ],
-    )
+    result = runner.invoke(cli.app, ["erke"])
     assert result.exit_code == 0
-    assert "pu serve" in result.output
+    payload = json.loads(_plain(result.output))
+    assert payload == {
+        "counts": {
+            "社会实践": 0,
+            "校园文化": 1,
+            "思想引领": 0,
+            "学科竞赛": 0,
+            "学术讲座": 0,
+            "体育健身": 0,
+        }
+    }
+    assert "已获" not in result.output
+    assert "必须补" not in result.output
+    assert "总有效分" not in result.output
+    assert "阶段线" not in result.output
 
 
-def test_cli_signup_schedule_normalizes_naive_at_to_local_aware(monkeypatch):
-    captured = {}
+def test_cli_signup_product_is_removed():
+    help_result = runner.invoke(cli.app, ["--help"])
+    assert help_result.exit_code == 0
+    plain = _plain(help_result.output).lower()
+    assert "signup" not in plain
+    assert "serve" not in plain
+    result = runner.invoke(cli.app, ["signup", "--help"])
+    assert result.exit_code != 0
+    serve_result = runner.invoke(cli.app, ["serve", "--help"])
+    assert serve_result.exit_code != 0
 
-    class CapturingService(MockService):
-        def create_signup_plan(self, activity_id, activity_title, run_at, max_attempts=1):
-            captured["run_at"] = run_at
-            return super().create_signup_plan(activity_id, activity_title, run_at, max_attempts)
 
-    monkeypatch.setattr(cli, "build_service", lambda: CapturingService())
-    result = runner.invoke(
-        cli.app,
-        [
-            "signup",
-            "schedule",
-            "ACT-1001",
-            "--at",
-            "2026-06-08 18:30:00",
-        ],
-    )
+def test_cli_activities_joined_marks_signed_in(monkeypatch):
+    class MixedJoinedService(MockService):
+        async def joined_activities(self):
+            return [
+                Activity(
+                    activity_id="ACT-2001",
+                    title="校园文化讲座",
+                    activity_type="校园文化",
+                    signed_in=True,
+                ),
+                Activity(
+                    activity_id="ACT-2002",
+                    title="社会实践调研",
+                    activity_type="社会实践",
+                    signed_in=False,
+                ),
+            ]
 
+    monkeypatch.setattr(cli, "build_service", lambda: MixedJoinedService())
+    result = runner.invoke(cli.app, ["activities", "joined"])
     assert result.exit_code == 0
-    assert captured["run_at"].tzinfo is not None
-    assert captured["run_at"].utcoffset() is not None
-    assert '"run_at": "2026-06-08T18:30:00' in result.output
-    assert "+00:00" in result.output or "+" in result.output or "-" in result.output
+    plain = _plain(result.output)
+    signed_line = next(line for line in plain.splitlines() if "ACT-2001" in line)
+    unsigned_line = next(line for line in plain.splitlines() if "ACT-2002" in line)
+    assert "已签到" in signed_line
+    assert "未签到" not in signed_line
+    assert "未签到" in unsigned_line
 
-
-def test_cli_signup_commands_handle_errors_without_traceback(monkeypatch):
-    class ErrorService(MockService):
-        def cancel_signup_plan(self, plan_id):
-            raise KeyError(f"signup plan not found: {plan_id}")
-
-        def create_signup_plan(self, activity_id, activity_title, run_at, max_attempts=1):
-            raise BusinessError("not allowed")
-
-    monkeypatch.setattr(cli, "build_service", lambda: ErrorService())
-
-    result = runner.invoke(cli.app, ["signup", "cancel", "404"])
-    assert result.exit_code == 1
-    assert "Traceback" not in result.output
-    assert "signup plan not found" in result.output
-
-    result = runner.invoke(
-        cli.app,
-        [
-            "signup",
-            "schedule",
-            "ACT-1001",
-            "--at",
-            "2026-06-08T18:30:00+00:00",
-        ],
-    )
-    assert result.exit_code == 1
-    assert "Traceback" not in result.output
-    assert "not allowed" in result.output
+    json_result = runner.invoke(cli.app, ["activities", "joined", "--json"])
+    assert json_result.exit_code == 0
+    payload = json.loads(_plain(json_result.output))
+    assert payload[0]["signed_in"] is True
+    assert payload[1]["signed_in"] is False
