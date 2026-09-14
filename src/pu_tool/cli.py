@@ -2,31 +2,26 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
 from typing import Annotated
 
 import typer
-import uvicorn
 from rich.console import Console
 from rich.table import Table
 
-from pu_tool.config import Settings
 from pu_tool.errors import PuToolError, RiskControlError
 from pu_tool.models import Activity
 from pu_tool.pu_client import decode_school_sid
 from pu_tool.service import build_service
-from pu_tool.time_utils import ensure_aware_local
 
-app = typer.Typer(help="PU 本地 CLI + Web 工具，仅用于本人账号。")
+app = typer.Typer(help="PU 本地 CLI + MCP 工具，仅用于本人账号。")
 auth_app = typer.Typer(help="认证状态")
-school_app = typer.Typer(help="学校查询")
+schools_app = typer.Typer(help="学校查询")
 activities_app = typer.Typer(help="活动浏览")
-signup_app = typer.Typer(help="低频定时报名计划")
 
 app.add_typer(auth_app, name="auth")
-app.add_typer(school_app, name="school")
+app.add_typer(schools_app, name="schools")
+app.add_typer(schools_app, name="school")
 app.add_typer(activities_app, name="activities")
-app.add_typer(signup_app, name="signup")
 
 console = Console()
 
@@ -66,7 +61,7 @@ def login(
         console.print("[red]请提供且只提供一个学校 SID：--sid 或 --encoded-sid。[/red]")
         raise typer.Exit(1)
     if sid is not None and not sid.isdigit():
-        console.print("[red]学校 SID 必须是数字；请先用 `pu school search` 按校名查询。[/red]")
+        console.print("[red]学校 SID 必须是数字；请先用 `pu schools search` 按校名查询。[/red]")
         raise typer.Exit(1)
     school_sid = sid or decode_school_sid(encoded_sid or "")
     try:
@@ -84,7 +79,7 @@ def auth_status() -> None:
     console.print(json.dumps(status, ensure_ascii=False, indent=2))
 
 
-@school_app.command("search")
+@schools_app.command("search")
 def school_search(
     keyword: str,
     limit: Annotated[int, typer.Option("--limit", min=1)] = 20,
@@ -189,7 +184,7 @@ def activities_info(
 
 @activities_app.command("joined")
 def joined_activities(json_output: Annotated[bool, typer.Option("--json")] = False) -> None:
-    """查看已报名活动。"""
+    """查看已报名活动，标明是否已签到。"""
     try:
         activities = _run(build_service().joined_activities())
     except PuToolError as exc:
@@ -202,127 +197,48 @@ def joined_activities(json_output: Annotated[bool, typer.Option("--json")] = Fal
             )
         )
         return
+    table = Table(title="已报名活动")
+    table.add_column("活动 ID")
+    table.add_column("标题")
+    table.add_column("类型")
+    table.add_column("签到")
+    table.add_column("加分/学分/积分")
     for item in activities:
-        console.print(
-            f"{item.activity_id}\t{item.title}\t{item.activity_type}\t{_score_summary(item)}"
-        )
-
-
-@signup_app.command("schedule")
-def signup_schedule(
-    activity_id: str,
-    at: Annotated[str, typer.Option("--at")],
-    activity_title: Annotated[str, typer.Option("--title")] = "",
-    max_attempts: Annotated[int, typer.Option("--max-attempts", min=1, max=3)] = 1,
-) -> None:
-    """创建低频定时报名计划。"""
-    try:
-        run_at = ensure_aware_local(datetime.fromisoformat(at.replace(" ", "T")))
-        plan = build_service().create_signup_plan(
-            activity_id,
-            activity_title or activity_id,
-            run_at,
-            max_attempts=max_attempts,
-        )
-    except (ValueError, PuToolError, KeyError) as exc:
-        _print_error(exc)
-        raise typer.Exit(1) from exc
-    console.print(json.dumps(plan.model_dump(mode="json"), ensure_ascii=False, indent=2))
-    console.print("计划已创建；请保持 `pu serve` 运行，定时报名调度器才会执行该计划。")
-
-
-@signup_app.command("plans")
-def signup_plans(json_output: Annotated[bool, typer.Option("--json")] = False) -> None:
-    """查看报名计划。"""
-    try:
-        plans = build_service().list_signup_plans()
-    except (ValueError, PuToolError, KeyError) as exc:
-        _print_error(exc)
-        raise typer.Exit(1) from exc
-    if json_output:
-        console.print(
-            json.dumps(
-                [item.model_dump(mode="json") for item in plans], ensure_ascii=False, indent=2
-            )
-        )
-        return
-    table = Table(title="报名计划")
-    table.add_column("ID")
-    table.add_column("活动")
-    table.add_column("执行时间")
-    table.add_column("状态")
-    table.add_column("尝试")
-    for plan in plans:
         table.add_row(
-            str(plan.plan_id),
-            f"{plan.activity_id} {plan.activity_title}",
-            str(plan.run_at),
-            plan.status,
-            f"{plan.attempt_count}/{plan.max_attempts}",
+            item.activity_id,
+            item.title,
+            item.activity_type,
+            "已签到" if item.signed_in else "未签到",
+            _score_summary(item),
         )
     console.print(table)
 
 
-@signup_app.command("cancel")
-def signup_cancel(plan_id: int) -> None:
-    """取消报名计划。"""
+@activities_app.command("join")
+def activities_join(activity_id: str) -> None:
+    """立即向 PU 提交报名。"""
     try:
-        plan = build_service().cancel_signup_plan(plan_id)
-    except (ValueError, PuToolError, KeyError) as exc:
+        result = _run(build_service().join_activity(activity_id))
+    except PuToolError as exc:
         _print_error(exc)
         raise typer.Exit(1) from exc
-    console.print(json.dumps(plan.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    console.print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
-@signup_app.command("attempts")
-def signup_attempts(
-    plan_id: Annotated[int | None, typer.Option("--plan-id")] = None,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
-) -> None:
-    """查看报名尝试记录。"""
+@app.command("erke")
+def erke() -> None:
+    """打印各活动类型已签到次数，与 MCP attendance_counts 同一结构。"""
     try:
-        attempts = build_service().list_signup_attempts(plan_id=plan_id)
-    except (ValueError, PuToolError, KeyError) as exc:
+        counts = _run(build_service().attendance_counts())
+    except PuToolError as exc:
         _print_error(exc)
         raise typer.Exit(1) from exc
-    if json_output:
-        console.print(
-            json.dumps(
-                [item.model_dump(mode="json") for item in attempts], ensure_ascii=False, indent=2
-            )
-        )
-        return
-    table = Table(title="报名尝试")
-    table.add_column("ID")
-    table.add_column("计划")
-    table.add_column("活动")
-    table.add_column("时间")
-    table.add_column("状态")
-    table.add_column("消息")
-    for attempt in attempts:
-        table.add_row(
-            str(attempt.attempt_id),
-            str(attempt.plan_id),
-            attempt.activity_id,
-            str(attempt.attempted_at),
-            attempt.status,
-            attempt.message,
-        )
-    console.print(table)
+    console.print(json.dumps({"counts": counts}, ensure_ascii=False, indent=2))
 
 
 @app.command("mcp")
 def mcp_stdio() -> None:
-    """以 stdio 启动 MCP，供 agent 查询学校 sid 与登录状态。"""
+    """以 stdio 启动 MCP，供 agent 访问本人 PU 账号。"""
     from pu_tool.mcp_server import run_stdio
 
     run_stdio()
-
-
-@app.command()
-def serve(
-    host: Annotated[str, typer.Option("--host")] = Settings().web_host,
-    port: Annotated[int, typer.Option("--port")] = Settings().web_port,
-) -> None:
-    """启动本地 Web，默认只绑定 127.0.0.1。"""
-    uvicorn.run("pu_tool.web_app:create_app", host=host, port=port, factory=True)

@@ -10,7 +10,7 @@ description: Help the user look up a PU school sid and log in locally. Use when 
 ## 步骤
 
 1. 若用户已给出数字学校 sid，跳到第 4 步。
-2. 用学校查询（MCP `search_schools` 或 CLI `pu school search <校名> --json`）按中文校名或拼音简称查。关键字不能为空。
+2. 用学校查询（MCP `search_schools` 或 CLI `pu schools search <校名> --json`）按中文校名或拼音简称查。关键字不能为空。
 3. 把匹配列表（id / name / short）给用户看。多个结果时列出匹配项，不要默默选一所学校。默认最多 20 条（`limit` 可改）；若结果被截断，说明还有更多匹配，请用户换更精确的关键字。请用户确认是哪一所。
 4. 用户确认后，告诉用户**自己**在终端运行：
 

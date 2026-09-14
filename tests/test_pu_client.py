@@ -144,6 +144,24 @@ async def test_activity_list_accepts_explicit_limit(fixture_json):
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_join_activity_is_authenticated_post(fixture_json):
+    route = respx.post("https://mock.local/apis/activity/join").mock(
+        return_value=httpx.Response(200, json=fixture_json("activity_join_success.json"))
+    )
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    async with PuClient(
+        base_url="https://mock.local", session=session, min_interval_seconds=0
+    ) as client:
+        payload = await client.join_activity("ACT-1001")
+    assert payload["code"] == 0
+    assert payload["msg"] == "报名成功"
+    assert route.calls[0].request.method == "POST"
+    assert route.calls[0].request.url.path == "/apis/activity/join"
+    assert route.calls[0].request.headers["Authorization"] == "Bearer TEST_TOKEN:TEST_SID"
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_business_failed_join_is_not_retried(fixture_json):
     route = respx.post("https://mock.local/apis/activity/join").mock(
         return_value=httpx.Response(200, json=fixture_json("activity_join_business_fail.json"))
