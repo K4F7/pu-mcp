@@ -4,6 +4,7 @@ import pytest
 
 from pu_mcp.activity_parser import parse_activity, parse_activity_detail, parse_activity_list
 from pu_mcp.config import Settings
+from pu_mcp.errors import ParseError
 from pu_mcp.models import SignupPlan
 
 
@@ -47,7 +48,9 @@ def test_parse_activity_list_coerces_int_status_from_my_list(fixture_json):
 
 
 def test_parse_live_detail_flattens_category_name_and_has_sign_in(fixture_json):
-    activity = parse_activity_detail(fixture_json("activity_info_live.json"))
+    activity = parse_activity_detail(
+        fixture_json("activity_info_live.json"), activity_id="1001"
+    )
     assert activity.activity_id == "1001"
     assert activity.title == "校园文化合成活动"
     assert activity.activity_type == "校园文化"
@@ -55,10 +58,26 @@ def test_parse_live_detail_flattens_category_name_and_has_sign_in(fixture_json):
     assert activity.activity_type != "0"
 
 
+def test_parse_live_detail_without_id_raises_without_fallback(fixture_json):
+    with pytest.raises(ParseError, match="id or title"):
+        parse_activity_detail(fixture_json("activity_info_live.json"))
+
+
+def test_parse_live_detail_backfills_requested_id(fixture_json):
+    activity = parse_activity_detail(
+        fixture_json("activity_info_live.json"), activity_id="4242"
+    )
+    assert activity.activity_id == "4242"
+    assert activity.title == "校园文化合成活动"
+    assert activity.activity_type == "校园文化"
+    assert activity.signed_in is True
+
+
 def test_parse_live_detail_has_sign_in_zero_is_false(fixture_json):
     payload = fixture_json("activity_info_live.json")
     payload["data"]["userStatus"]["hasSignIn"] = 0
-    activity = parse_activity_detail(payload)
+    activity = parse_activity_detail(payload, activity_id="1001")
+    assert activity.activity_id == "1001"
     assert activity.activity_type == "校园文化"
     assert activity.signed_in is False
 
@@ -144,6 +163,21 @@ def test_parse_keeps_outer_id_when_flattening_nested_info():
     assert activity.activity_id == "2002"
     assert activity.activity_type == "学科竞赛"
     assert activity.signed_in is False
+
+
+def test_parse_detail_fallback_id_does_not_override_outer_id():
+    activity = parse_activity_detail(
+        {
+            "code": 0,
+            "data": {
+                "id": 2002,
+                "baseInfo": {"id": 999, "name": "外层 id 优先", "categoryName": "学科竞赛"},
+                "userStatus": {"hasSignIn": 0, "hasJoin": 1},
+            },
+        },
+        activity_id="requested-should-not-win",
+    )
+    assert activity.activity_id == "2002"
 
 
 def test_parse_does_not_stringify_nested_base_info_as_type():
