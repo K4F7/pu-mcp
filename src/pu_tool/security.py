@@ -11,6 +11,7 @@ import keyring
 from pydantic import TypeAdapter
 
 from pu_tool.config import default_data_dir
+from pu_tool.mcp_launch import SESSION_FALLBACK_FILENAME, SESSION_FALLBACK_POSIX_MODE
 from pu_tool.models import AuthSession
 
 SERVICE_NAME = "pu-tool"
@@ -37,7 +38,7 @@ class SessionStore:
 
 class FileSessionStore(SessionStore):
     def __init__(self, path: Path | None = None):
-        self.path = path or default_data_dir() / "session.json"
+        self.path = path or default_data_dir() / SESSION_FALLBACK_FILENAME
 
     def save(self, session: AuthSession) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -55,7 +56,7 @@ class FileSessionStore(SessionStore):
 
     def _restrict_permissions(self) -> None:
         if os.name == "posix":
-            self.path.chmod(0o600)
+            self.path.chmod(SESSION_FALLBACK_POSIX_MODE)
             return
         self.path.chmod(stat.S_IREAD | stat.S_IWRITE)
         username = os.environ.get("USERNAME")
@@ -91,7 +92,8 @@ class KeyringSessionStore(SessionStore):
             keyring.set_password(SERVICE_NAME, "metadata", metadata)
         except Exception:
             warnings.warn(
-                "OS keyring 不可用，改用本地文件保存 session；请注意本地文件保护。",
+                "OS keyring 不可用，改用本地文件保存 session；请注意本地文件保护。"
+                f" fallback={self.fallback.path}",
                 RuntimeWarning,
                 stacklevel=2,
             )
