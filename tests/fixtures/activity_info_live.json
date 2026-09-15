@@ -6,7 +6,11 @@
     "baseInfo": {
       "name": "校园文化合成活动",
       "categoryName": "校园文化",
-      "categoryId": 1
+      "categoryId": 1,
+      "description": "合成活动说明正文",
+      "address": "虚构活动室 A",
+      "statusName": "未开始",
+      "status": 21
     },
     "userStatus": {
       "hasSignIn": 1,

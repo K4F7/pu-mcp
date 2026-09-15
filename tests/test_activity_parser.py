@@ -44,16 +44,19 @@ def test_parse_activity_detail_preserves_unknown_reward_fields(fixture_json):
 def test_parse_activity_list_coerces_int_status_from_my_list(fixture_json):
     activities = parse_activity_list(fixture_json("my_list_joined.json"))
     assert activities[0].activity_id == "ACT-1009"
-    assert activities[0].status == "23"
+    assert activities[0].status is None
+    assert activities[0].status_code == "23"
 
 
 def test_parse_live_detail_flattens_category_name_and_has_sign_in(fixture_json):
-    activity = parse_activity_detail(
-        fixture_json("activity_info_live.json"), activity_id="1001"
-    )
+    activity = parse_activity_detail(fixture_json("activity_info_live.json"), activity_id="1001")
     assert activity.activity_id == "1001"
     assert activity.title == "校园文化合成活动"
     assert activity.activity_type == "校园文化"
+    assert activity.content == "合成活动说明正文"
+    assert activity.location == "虚构活动室 A"
+    assert activity.status == "未开始"
+    assert activity.status_code == "21"
     assert activity.signed_in is True
     assert activity.activity_type != "0"
 
@@ -64,9 +67,7 @@ def test_parse_live_detail_without_id_raises_without_fallback(fixture_json):
 
 
 def test_parse_live_detail_backfills_requested_id(fixture_json):
-    activity = parse_activity_detail(
-        fixture_json("activity_info_live.json"), activity_id="4242"
-    )
+    activity = parse_activity_detail(fixture_json("activity_info_live.json"), activity_id="4242")
     assert activity.activity_id == "4242"
     assert activity.title == "校园文化合成活动"
     assert activity.activity_type == "校园文化"
@@ -194,3 +195,108 @@ def test_parse_does_not_stringify_nested_base_info_as_type():
     assert activity.activity_type == "体育健身"
     assert not activity.activity_type.startswith("{")
     assert activity.signed_in is True
+
+
+def test_parse_prefers_description_over_empty_content():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "讲座",
+            "description": "活动说明正文",
+            "content": "",
+        }
+    )
+    assert activity.content == "活动说明正文"
+
+
+def test_parse_uses_content_when_description_empty():
+    activity = parse_activity(
+        {"id": "1001", "name": "讲座", "description": "", "content": "备用正文"}
+    )
+    assert activity.content == "备用正文"
+
+
+def test_parse_empty_description_and_content_is_none():
+    activity = parse_activity({"id": "1001", "name": "讲座", "description": "", "content": ""})
+    assert activity.content is None
+
+
+def test_parse_missing_description_and_content_is_none():
+    activity = parse_activity({"id": "1001", "name": "讲座"})
+    assert activity.content is None
+
+
+def test_parse_nested_base_info_description_as_content():
+    activity = parse_activity_detail(
+        {
+            "code": 0,
+            "data": {
+                "id": 1001,
+                "baseInfo": {"name": "嵌套活动", "description": "嵌套说明正文"},
+            },
+        }
+    )
+    assert activity.content == "嵌套说明正文"
+
+
+def test_parse_prefers_description_over_news_info_content():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "讲座",
+            "newsInfo": {"content": "新闻正文"},
+            "baseInfo": {"description": "活动说明正文", "name": "讲座"},
+        }
+    )
+    assert activity.content == "活动说明正文"
+
+
+def test_parse_does_not_flatten_news_info_content():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "讲座",
+            "newsInfo": {"content": "新闻正文"},
+            "baseInfo": {"name": "讲座"},
+        }
+    )
+    assert activity.content is None
+    assert activity.raw.get("newsInfo") == {"content": "新闻正文"}
+    assert "content" not in activity.raw or activity.raw.get("content") in (None, "")
+
+
+def test_parse_human_status_name_and_numeric_code():
+    activity = parse_activity({"id": "1001", "name": "讲座", "statusName": "未开始", "status": 21})
+    assert activity.status == "未开始"
+    assert activity.status_code == "21"
+
+
+def test_parse_human_status_name_snake_case():
+    activity = parse_activity({"id": "1001", "name": "讲座", "status_name": "进行中", "status": 5})
+    assert activity.status == "进行中"
+    assert activity.status_code == "5"
+
+
+def test_parse_numeric_status_only_is_status_code():
+    activity = parse_activity({"id": "1001", "name": "讲座", "status": 23})
+    assert activity.status is None
+    assert activity.status_code == "23"
+
+
+def test_parse_numeric_status_string_only_is_status_code():
+    activity = parse_activity({"id": "1001", "name": "讲座", "status": "23"})
+    assert activity.status is None
+    assert activity.status_code == "23"
+
+
+def test_parse_legacy_open_status_stays_in_status(fixture_json):
+    activities = parse_activity_list(fixture_json("activity_list.json"))
+    assert activities[0].status == "open"
+    assert activities[0].status_code == "open"
+    assert activities[1].status == "scheduled"
+    assert activities[1].status_code == "scheduled"
+
+
+def test_parse_live_detail_location_from_address(fixture_json):
+    activity = parse_activity_detail(fixture_json("activity_info_live.json"), activity_id="1001")
+    assert activity.location == "虚构活动室 A"

@@ -31,6 +31,9 @@ JOINED_LIST_TYPES = (1, 2, 3)
 MY_LIST_PAGE_LIMIT = 20
 MY_LIST_MAX_PAGES = 50
 ENRICH_CONCURRENCY = 6
+# Cap optional-only activity/info HTTP fills (content/location/human status).
+# Type/sign-in enrichment is uncapped (already required for erke accuracy).
+ENRICH_OPTIONAL_HTTP_LIMIT = 8
 
 
 class PuService:
@@ -217,21 +220,79 @@ class PuService:
         self, activities: list[Activity], *, resolve_sign_in: bool
     ) -> list[Activity]:
         semaphore = asyncio.Semaphore(ENRICH_CONCURRENCY)
+        optional_http_remaining = ENRICH_OPTIONAL_HTTP_LIMIT
+        optional_http_lock = asyncio.Lock()
 
-        async def enrich_one(activity: Activity) -> Activity:
+        def _merge_from_detail(
+            activity: Activity, detail: Activity, *, sign_resolved: bool
+        ) -> Activity:
             needs_type = activity.activity_type == "未知"
-            needs_sign = resolve_sign_in and not _sign_in_resolved(activity)
-            if (not needs_type and not needs_sign) or not activity.activity_id:
-                return activity
-            try:
-                async with semaphore:
-                    detail = await self.activity_detail(activity.activity_id, refresh=False)
-            except PuToolError:
-                return activity
-            updates: dict[str, object] = {"signed_in": detail.signed_in}
+            needs_content = not activity.content
+            needs_location = not activity.location
+            needs_status = not activity.status
+            needs_status_code = not activity.status_code
+            updates: dict[str, object] = {}
+            # Copy signed_in only when the list payload has no sign-in flag.
+            if not sign_resolved:
+                updates["signed_in"] = detail.signed_in
             if needs_type and detail.activity_type != "未知":
                 updates["activity_type"] = detail.activity_type
+            if needs_content and detail.content:
+                updates["content"] = detail.content
+            if needs_location and detail.location:
+                updates["location"] = detail.location
+            if needs_status and detail.status:
+                updates["status"] = detail.status
+            if needs_status_code and detail.status_code:
+                updates["status_code"] = detail.status_code
+            if not updates:
+                return activity
             return activity.model_copy(update=updates)
+
+        async def enrich_one(activity: Activity) -> Activity:
+            if not activity.activity_id:
+                return activity
+            sign_resolved = _sign_in_resolved(activity)
+            needs_type = activity.activity_type == "未知"
+            needs_sign = resolve_sign_in and not sign_resolved
+            needs_content = not activity.content
+            needs_location = not activity.location
+            needs_status = not activity.status
+            # status_code alone must not force HTTP; fill from TTL-aware cache only.
+            needs_optional = needs_content or needs_location or needs_status
+            needs_status_code = not activity.status_code
+            if not needs_type and not needs_sign and not needs_optional and not needs_status_code:
+                return activity
+
+            ttl = self.settings.activity_cache_ttl_seconds
+            detail: Activity | None = None
+            if needs_type or needs_sign:
+                try:
+                    async with semaphore:
+                        detail = await self.activity_detail(activity.activity_id, refresh=False)
+                except PuToolError:
+                    return activity
+            elif needs_optional:
+                cached = self.storage.get_cached_activity(activity.activity_id, max_age_seconds=ttl)
+                if cached is not None and not is_list_shaped_unknown(cached):
+                    detail = cached
+                else:
+                    async with optional_http_lock:
+                        nonlocal optional_http_remaining
+                        if optional_http_remaining <= 0:
+                            return activity
+                        optional_http_remaining -= 1
+                    try:
+                        async with semaphore:
+                            detail = await self.activity_detail(activity.activity_id, refresh=False)
+                    except PuToolError:
+                        return activity
+            else:
+                cached = self.storage.get_cached_activity(activity.activity_id, max_age_seconds=ttl)
+                if cached is None or is_list_shaped_unknown(cached):
+                    return activity
+                detail = cached
+            return _merge_from_detail(activity, detail, sign_resolved=sign_resolved)
 
         return list(await asyncio.gather(*[enrich_one(activity) for activity in activities]))
 
@@ -282,9 +343,7 @@ def _first_int(mapping: dict, *keys: str) -> int | None:
     return None
 
 
-def _my_list_has_more_pages(
-    *, data: object, item_count: int, page: int, limit: int
-) -> bool:
+def _my_list_has_more_pages(*, data: object, item_count: int, page: int, limit: int) -> bool:
     # Paginate via pageInfo. Empty/short pages always stop. A full page with
     # no usable pageInfo also stops so a missing total cannot loop forever.
     if item_count == 0 or item_count < limit:
@@ -297,8 +356,6 @@ def _my_list_has_more_pages(
     if total is not None:
         return page * limit < total
     return False
-
-
 
 
 def _is_canonical_list_filters(filters: dict[str, object]) -> bool:
@@ -323,9 +380,7 @@ def _raw_has_signed_in_field(raw: object) -> bool:
         return True
     for key in ("userStatus", "user_status"):
         nested = raw.get(key)
-        if isinstance(nested, dict) and (
-            "hasSignIn" in nested or "has_sign_in" in nested
-        ):
+        if isinstance(nested, dict) and ("hasSignIn" in nested or "has_sign_in" in nested):
             return True
     return False
 

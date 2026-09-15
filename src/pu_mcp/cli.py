@@ -30,6 +30,15 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+def _cli_preview(value: str | None, *, limit: int = 24) -> str:
+    if not value:
+        return "-"
+    text = " ".join(str(value).split())
+    if len(text) <= limit:
+        return text
+    return text[: max(1, limit - 1)] + "…"
+
+
 def _score_summary(activity: Activity) -> str:
     return (
         " / ".join(f"{item.label}:{item.value}{item.unit}" for item in activity.score_items) or "-"
@@ -141,21 +150,22 @@ def activities_list(
             )
         )
         return
+    # Human table keeps agent-readable fields; times/scores remain in --json / info.
     table = Table(title="PU 活动（仅用于本人账号）")
-    table.add_column("活动 ID")
-    table.add_column("标题")
-    table.add_column("类型")
-    table.add_column("报名时间")
-    table.add_column("活动时间")
-    table.add_column("加分/学分/积分")
+    table.add_column("活动 ID", no_wrap=True)
+    table.add_column("标题", overflow="ellipsis", max_width=18)
+    table.add_column("类型", no_wrap=True)
+    table.add_column("状态", no_wrap=True)
+    table.add_column("地点", overflow="ellipsis", max_width=14)
+    table.add_column("内容", overflow="ellipsis", max_width=18)
     for item in activities:
         table.add_row(
             item.activity_id,
             item.title,
             item.activity_type,
-            f"{item.signup_start_time or '-'} ~ {item.signup_end_time or '-'}",
-            f"{item.start_time or '-'} ~ {item.end_time or '-'}",
-            _score_summary(item),
+            item.status or "-",
+            item.location or "-",
+            _cli_preview(item.content, limit=18),
         )
     console.print(table)
 
@@ -180,6 +190,8 @@ def activities_info(
     console.print(f"类型：{activity.activity_type}")
     console.print(f"组织方：{activity.organizer or '-'}")
     console.print(f"地点：{activity.location or '-'}")
+    console.print(f"内容：{activity.content or '-'}")
+    console.print(f"状态：{activity.status or '-'}")
     console.print(f"报名：{activity.signup_start_time or '-'} ~ {activity.signup_end_time or '-'}")
     console.print(f"活动：{activity.start_time or '-'} ~ {activity.end_time or '-'}")
     console.print(f"加分/学分/积分：{_score_summary(activity)}")
@@ -201,18 +213,22 @@ def joined_activities(json_output: Annotated[bool, typer.Option("--json")] = Fal
         )
         return
     table = Table(title="已报名活动")
-    table.add_column("活动 ID")
-    table.add_column("标题")
-    table.add_column("类型")
-    table.add_column("签到")
-    table.add_column("加分/学分/积分")
+    table.add_column("活动 ID", no_wrap=True)
+    table.add_column("标题", overflow="ellipsis", max_width=16)
+    table.add_column("类型", no_wrap=True)
+    table.add_column("状态", no_wrap=True)
+    table.add_column("地点", overflow="ellipsis", max_width=12)
+    table.add_column("内容", overflow="ellipsis", max_width=14)
+    table.add_column("签到", no_wrap=True)
     for item in activities:
         table.add_row(
             item.activity_id,
             item.title,
             item.activity_type,
+            item.status or "-",
+            item.location or "-",
+            _cli_preview(item.content, limit=14),
             "已签到" if item.signed_in else "未签到",
-            _score_summary(item),
         )
     console.print(table)
 
