@@ -18,6 +18,10 @@ COUNTABLE_ACTIVITY_TYPES = (
     "学术讲座",
     "体育健身",
 )
+# myList request `type` tabs (1–3; 0 and ≥4 are invalid per live API), not 活动类型 labels.
+JOINED_LIST_TYPES = (1, 2, 3)
+MY_LIST_PAGE_LIMIT = 20
+MY_LIST_MAX_PAGES = 50
 
 
 class PuService:
@@ -121,7 +125,30 @@ class PuService:
         return activity
 
     async def joined_activities(self) -> list[Activity]:
-        return parse_activity_list(await self.client.my_list())
+        merged: list[Activity] = []
+        seen: set[str] = set()
+        for list_type in JOINED_LIST_TYPES:
+            page = 1
+            while page <= MY_LIST_MAX_PAGES:
+                payload = await self.client.my_list(
+                    type=list_type, page=page, limit=MY_LIST_PAGE_LIMIT
+                )
+                activities = parse_activity_list(payload)
+                for activity in activities:
+                    if activity.activity_id in seen:
+                        continue
+                    seen.add(activity.activity_id)
+                    merged.append(activity)
+                data = payload.get("data") if isinstance(payload, dict) else None
+                if not _my_list_has_more_pages(
+                    data=data,
+                    item_count=len(activities),
+                    page=page,
+                    limit=MY_LIST_PAGE_LIMIT,
+                ):
+                    break
+                page += 1
+        return merged
 
     async def join_activity(self, activity_id: str) -> dict:
         return await self.client.join_activity(activity_id)
@@ -183,6 +210,53 @@ class PuService:
         if activity_type:
             result = [activity for activity in result if activity.activity_type == activity_type]
         return result
+
+
+def _page_info(data: object) -> dict:
+    if not isinstance(data, dict):
+        return {}
+    info = data.get("pageInfo") or data.get("page_info") or {}
+    return info if isinstance(info, dict) else {}
+
+
+def _safe_int(value: object) -> int | None:
+    if isinstance(value, bool) or value in (None, ""):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _first_int(mapping: dict, *keys: str) -> int | None:
+    for key in keys:
+        parsed = _safe_int(mapping.get(key))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _my_list_has_more_pages(
+    *, data: object, item_count: int, page: int, limit: int
+) -> bool:
+    # Paginate via pageInfo. Empty/short pages always stop. A full page with
+    # no usable pageInfo also stops so a missing total cannot loop forever.
+    if item_count == 0 or item_count < limit:
+        return False
+    info = _page_info(data)
+    total_page = _first_int(info, "totalPage", "total_page", "pages")
+    if total_page is not None:
+        return page < total_page
+    total = _first_int(info, "total", "count")
+    if total is not None:
+        return page * limit < total
+    return False
 
 
 def build_service() -> PuService:
