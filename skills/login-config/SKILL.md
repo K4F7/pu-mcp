@@ -8,7 +8,7 @@ description: Help the user look up a PU school sid and log in locally. Use when 
 只帮用户查出学校 sid，确认学校后再登录。不打开选学校页。不要在对话里收集、转述或保存密码。
 
 - 交互式 / TTY：确认学校后让用户自己在本机终端运行 `pu login --sid …`；不要代跑、不要让用户把密码贴进对话。
-- 无 TTY / Grok Bot / agent：可以非交互执行 `pu login`，一次传齐 `-u -p --sid`，或用 `PU_USERNAME` / `PU_PASSWORD` 环境变量加上 `--sid`。优先 secret-request / 环境变量，不要把密码写进对话。`--sid` 没有 typer envvar，必须显式 `--sid "$PU_SID"`。
+- 无 TTY / Grok Bot / agent：可以非交互执行 `pu login`，一次传齐 `-u -p --sid`，或设好 `PU_USERNAME` / `PU_PASSWORD` / `PU_SID` 后直接 `pu login`（可省略标志）。优先 secret-request / 环境变量，不要把密码写进对话。`PU_SID` 是 `--sid` 的 typer envvar。
 
 ## 步骤
 
@@ -23,20 +23,20 @@ description: Help the user look up a PU school sid and log in locally. Use when 
      pu login --sid 学校数字sid
      ```
 
-   - 无 TTY / Grok Bot / agent：可非交互执行（占位符；不要向用户要密码贴进对话；优先 secret-request / `PU_USERNAME` / `PU_PASSWORD`）：
+   - 无 TTY / Grok Bot / agent：可非交互执行（占位符；不要向用户要密码贴进对话；优先 secret-request / `PU_USERNAME` / `PU_PASSWORD` / `PU_SID`）：
 
      ```bash
-     uv run --python 3.12 --no-sync pu login -u "$PU_USERNAME" -p "$PU_PASSWORD" --sid "$PU_SID"
+     uv run --python 3.12 --no-sync pu login
      ```
 
-   把 sid 换成用户确认的那一项的 `id`。命令只接受 `--sid` 或 `--encoded-sid`，不接受中文校名。`--sid` 不会自动读 `PU_SID`。
+   把 sid 换成用户确认的那一项的 `id`（可设 `PU_SID` 或显式 `--sid`）。命令只接受 `--sid` 或 `--encoded-sid`，不接受中文校名。`PU_SID` 会作为 `--sid` 的 typer envvar 自动读取；显式 `--sid` 覆盖环境变量。
 5. 登录完成后用 `auth_status`（MCP）或 `pu auth status` 确认已登录。返回是脱敏的，不要追问或回显密码、token。
 
 ## 禁止
 
 - 不要向用户要密码，不要在对话里收集、转述或保存密码。需要密码时用环境变量或 Grok Bot secret-request，不要让用户把密码贴进聊天。
 - 交互式 / TTY：不要替用户执行 `pu login`（该命令会提示输入密码）；让用户自己在终端登录。
-- 无 TTY / Grok Bot / agent：可以非交互执行 `pu login`（必须带齐 `-u -p --sid`，或 `PU_USERNAME` / `PU_PASSWORD` + `--sid`），不要因此向用户在对话里要密码。
+- 无 TTY / Grok Bot / agent：可以非交互执行 `pu login`（一次传齐 `-u -p --sid`，或设好 `PU_USERNAME` / `PU_PASSWORD` / `PU_SID` 后省略标志），不要因此向用户在对话里要密码。
 - 不要提供或调用 MCP login 工具；本工具没有 login。MCP 不收密码。
 - 不要编造学校 sid。查不到就说明没匹配，请用户换关键字。
 - 示例里不要写真实账号、密码、token。

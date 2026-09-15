@@ -255,8 +255,9 @@ def test_readme_keyring_fallback_matches_launch_constants():
 
 @pytest.mark.asyncio
 async def test_mcp_tools_unchanged_and_still_no_login():
-    from pu_mcp.mcp_server import mcp
     from test_mcp import EXPECTED_MCP_TOOLS, FORBIDDEN_MCP_TOOLS
+
+    from pu_mcp.mcp_server import mcp
 
     tools = await mcp.list_tools()
     names = {tool.name for tool in tools}

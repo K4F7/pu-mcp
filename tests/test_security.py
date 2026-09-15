@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from pu_mcp.models import AuthSession
-from pu_mcp.security import FileSessionStore, KeyringSessionStore, SERVICE_NAME, mask_secret
+from pu_mcp.security import SERVICE_NAME, FileSessionStore, KeyringSessionStore, mask_secret
 
 NEW_SERVICE_NAME = "pu-mcp"
 LEGACY_SERVICE_NAME = "pu-tool"

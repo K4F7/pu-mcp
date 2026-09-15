@@ -65,7 +65,7 @@ def login(
         str,
         typer.Option("--password", "-p", prompt=True, hide_input=True, envvar="PU_PASSWORD"),
     ],
-    sid: Annotated[str | None, typer.Option("--sid")] = None,
+    sid: Annotated[str | None, typer.Option("--sid", envvar="PU_SID")] = None,
     encoded_sid: Annotated[str | None, typer.Option("--encoded-sid")] = None,
 ) -> None:
     """登录并保存 session token；不会保存明文密码。"""

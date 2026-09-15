@@ -30,10 +30,10 @@ PowerShell 同样可执行上述命令。登录只走 CLI；MCP 不收密码、�
 uv run --python 3.12 --no-sync pu login --sid …
 ```
 
-无 TTY / Grok Bot / agent 一次传齐 `-u -p --sid`（或环境变量），不要把密码贴进对话。优先环境变量或 Grok Bot secret-request，避免明文出现在 argv。`--sid` 没有 typer envvar，必须显式传 `--sid "$PU_SID"`（不会自动读 `PU_SID`）：
+无 TTY / Grok Bot / agent 可一次传齐 `-u -p --sid`，或把 `PU_USERNAME` / `PU_PASSWORD` / `PU_SID` 设进环境后直接 `pu login`（可省略 `-u -p --sid`）。不要把密码贴进对话。优先环境变量或 Grok Bot secret-request，避免明文出现在 argv：
 
 ```bash
-uv run --python 3.12 --no-sync pu login -u "$PU_USERNAME" -p "$PU_PASSWORD" --sid "$PU_SID"
+uv run --python 3.12 --no-sync pu login
 ```
 
 ## CLI
@@ -54,7 +54,7 @@ uv run --python 3.12 --no-sync pu erke
 uv run --python 3.12 --no-sync pu mcp
 ```
 
-登录时必须提供学校 sid 或 class URL encoded sid；也可使用 `--encoded-sid`，或传入完整 class login URL。中文校名请先用 `uv run --python 3.12 --no-sync pu schools search` 查出数字 sid。`PU_USERNAME` / `PU_PASSWORD` 是 CLI `pu login` 的 typer envvar（对应 `-u` / `-p`）；`--sid` 必须写在命令行（例如 `--sid "$PU_SID"`），CLI 不会自动读取 `PU_SID`。agent 优先用环境变量或 Grok Bot secret-request，不要把密码写进对话。
+登录时必须提供学校 sid 或 class URL encoded sid；也可使用 `--encoded-sid`，或传入完整 class login URL。中文校名请先用 `uv run --python 3.12 --no-sync pu schools search` 查出数字 sid。`PU_USERNAME` / `PU_PASSWORD` / `PU_SID` 是 CLI `pu login` 的 typer envvar（对应 `-u` / `-p` / `--sid`）；三个都设好后可直接 `pu login`，省略标志。显式 `--sid` 覆盖环境变量。agent 优先用环境变量或 Grok Bot secret-request，不要把密码写进对话。MCP 不收密码、不读这些环境变量。
 
 活动列表和详情默认优先使用本地缓存，避免频繁刷新请求；需要实时数据时使用 `--refresh`。`pu activities joined` 会标明每场是否已签到。`pu erke` 只打印各活动类型已签到次数。
 
@@ -70,7 +70,7 @@ MCP 与 CLI 同一套能力（登录除外）。七个工具：
 - `attendance_counts`
 - `join_activity`
 
-登录只走 CLI：`uv run --python 3.12 --no-sync pu login --sid …`（已激活 `.venv` 时也可用裸 `pu login`）。MCP 不收密码、不提供 login 工具。无 TTY / agent 用 `-u -p --sid` 或 `PU_USERNAME` / `PU_PASSWORD` + `--sid`，不要把密码贴进对话。调用 `join_activity` 前应在对话里问用户是否报名。进度只给已签到次数；认定规则在 glossary。
+登录只走 CLI：`uv run --python 3.12 --no-sync pu login --sid …`（已激活 `.venv` 时也可用裸 `pu login`）。MCP 不收密码、不提供 login 工具。无 TTY / agent 用 `-u -p --sid`，或设好 `PU_USERNAME` / `PU_PASSWORD` / `PU_SID` 后直接 `pu login`，不要把密码贴进对话。调用 `join_activity` 前应在对话里问用户是否报名。进度只给已签到次数；认定规则在 glossary。
 
 活动字段（MCP `list_activities` / `activity_detail` / `list_joined` 与 CLI `activities list` / `info` / `joined` 同一模型）：
 
@@ -111,7 +111,8 @@ Grok Bot（AddMcpServer，无 cwd）必须用 `--directory` 指向仓库绝对�
 - `PU_MAX_RETRIES`：默认 `2`
 - `PU_ACTIVITY_CACHE_TTL_SECONDS`：活动缓存 TTL，默认 `300`
 - `PU_USERNAME`：仅 CLI `pu login` 的用户名（typer envvar，对应 `-u`）。MCP 不读。
-- `PU_PASSWORD`：仅 CLI `pu login` 的密码（typer envvar，对应 `-p`）。不要提交、不要贴进对话；MCP 不读。`--sid` 不是 envvar。
+- `PU_PASSWORD`：仅 CLI `pu login` 的密码（typer envvar，对应 `-p`）。不要提交、不要贴进对话；MCP 不读。
+- `PU_SID`：仅 CLI `pu login` 的学校 sid（typer envvar，对应 `--sid`）。MCP 不读。
 
 token 优先保存到 OS keyring（服务名 `pu-mcp`）。若 keyring 不可用，会落到本地文件 `~/.pu_mcp/session.json`（POSIX 权限 `0600`），并给出风险提示。旧路径 `~/.pu_tool/session.json` 与旧 keyring 服务 `pu-tool` 在读取时会迁移到新位置。本地文件安全性低于 OS keyring，请保护本机/用户账户；不要提交该文件。不保存密码（passwords never stored；只存 token/session）。
 
