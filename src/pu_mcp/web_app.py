@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from pu_tool.errors import (
+from pu_mcp.errors import (
     AuthError,
     BusinessError,
     NetworkError,
@@ -22,10 +22,10 @@ from pu_tool.errors import (
     RateLimitError,
     RiskControlError,
 )
-from pu_tool.pu_client import decode_school_sid
-from pu_tool.scheduler import LocalSignupScheduler
-from pu_tool.service import PuService, build_service
-from pu_tool.time_utils import ensure_aware_local
+from pu_mcp.pu_client import decode_school_sid
+from pu_mcp.scheduler import LocalSignupScheduler
+from pu_mcp.service import PuService, build_service
+from pu_mcp.time_utils import ensure_aware_local
 
 
 class LoginRequest(BaseModel):

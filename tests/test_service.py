@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pu_tool.errors import BusinessError
-from pu_tool.models import AuthSession
-from pu_tool.service import PuService
-from pu_tool.storage import Storage
+from pu_mcp.errors import BusinessError
+from pu_mcp.models import AuthSession
+from pu_mcp.service import PuService
+from pu_mcp.storage import Storage
 
 
 class MemorySessionStore:

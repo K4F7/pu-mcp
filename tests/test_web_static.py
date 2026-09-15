@@ -1,6 +1,6 @@
 from pathlib import Path
 
-APP_JS = Path(__file__).parents[1] / "src" / "pu_tool" / "web_static" / "app.js"
+APP_JS = Path(__file__).parents[1] / "src" / "pu_mcp" / "web_static" / "app.js"
 
 
 def test_static_js_uses_safe_dom_rendering_helpers():

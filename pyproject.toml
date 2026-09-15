@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pu-tool"
+name = "pu-mcp"
 version = "0.1.0"
 description = "Local-only PU Pocket Campus CLI and stdio MCP for your own PU account"
 readme = "README.md"
@@ -31,10 +31,10 @@ dev = [
 ]
 
 [project.scripts]
-pu = "pu_tool.cli:app"
+pu = "pu_mcp.cli:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pu_tool"]
+packages = ["src/pu_mcp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

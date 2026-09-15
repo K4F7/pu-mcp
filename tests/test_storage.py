@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pu_tool.models import SignupAttempt, SignupPlan
-from pu_tool.storage import DuplicatePlanError, Storage
+from pu_mcp.models import SignupAttempt, SignupPlan
+from pu_mcp.storage import DuplicatePlanError, Storage
 
 
 def test_storage_persists_plan_and_attempt(tmp_path):

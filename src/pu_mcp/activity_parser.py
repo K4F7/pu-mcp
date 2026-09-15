@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pu_tool.errors import ParseError
-from pu_tool.models import Activity, ScoreItem
+from pu_mcp.errors import ParseError
+from pu_mcp.models import Activity, ScoreItem
 
 TYPE_FIELDS = ("typeName", "type_name", "category", "activityType", "activity_type")
 ID_FIELDS = ("id", "activityId", "activity_id")

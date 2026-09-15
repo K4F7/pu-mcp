@@ -4,7 +4,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pu_tool.models import Activity, SignupAttempt, SignupPlan
+from pu_mcp.models import Activity, SignupAttempt, SignupPlan
 
 
 class DuplicatePlanError(ValueError):
