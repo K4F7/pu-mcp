@@ -1,0 +1,8 @@
+MCP_COMMAND = "uv"
+MCP_STDIO_ARGS = ["run", "--python", "3.12", "--no-sync", "pu", "mcp"]
+MCP_DIRECTORY_FLAG = "--directory"
+MCP_DIRECTORY_PLACEHOLDER = "/path/to/PU"
+MCP_STARTUP_TIMEOUT_SEC = 60
+SESSION_FALLBACK_DIRNAME = ".pu_tool"
+SESSION_FALLBACK_FILENAME = "session.json"
+SESSION_FALLBACK_POSIX_MODE = 0o600

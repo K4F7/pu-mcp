@@ -16,27 +16,37 @@
 
 ## 安装
 
-```powershell
+先安装 `uv`（install uv：https://docs.astral.sh/uv/getting-started/installation/），并确保 `uv` 在 `PATH` 中（图形界面会话可能没有 `~/.local/bin`）。用 `uv sync --python 3.12` / `uv run --python 3.12` 固定 Python 3.12（uv 会按需拉取 3.12）。推荐始终 `uv run --python 3.12 --no-sync pu …`，无需全局安装 `pu` 入口（不必把 `pu` 装到全局 PATH）。
+
+```bash
 uv sync --python 3.12 --extra dev
+```
+
+PowerShell 同样可执行上述命令。登录一次（把 sid 换成真实值）：
+
+```bash
+uv run --python 3.12 --no-sync pu login --sid …
 ```
 
 ## CLI
 
-```powershell
-pu --help
-pu schools search 南昌 --json
-pu login --username fake_user --sid 237791864815616
-pu auth status
-pu activities list
-pu activities list --refresh
-pu activities info ACT-1001 --refresh
-pu activities joined
-pu activities join ACT-1001
-pu erke
-pu mcp
+推荐始终 `uv run --python 3.12 --no-sync pu …`。若已激活 `.venv`（`source .venv/bin/activate`；Windows：`.venv\Scripts\Activate.ps1`），下面裸 `pu` 也可以。
+
+```bash
+uv run --python 3.12 --no-sync pu --help
+uv run --python 3.12 --no-sync pu schools search 南昌 --json
+uv run --python 3.12 --no-sync pu login --username fake_user --sid 237791864815616
+uv run --python 3.12 --no-sync pu auth status
+uv run --python 3.12 --no-sync pu activities list
+uv run --python 3.12 --no-sync pu activities list --refresh
+uv run --python 3.12 --no-sync pu activities info ACT-1001 --refresh
+uv run --python 3.12 --no-sync pu activities joined
+uv run --python 3.12 --no-sync pu activities join ACT-1001
+uv run --python 3.12 --no-sync pu erke
+uv run --python 3.12 --no-sync pu mcp
 ```
 
-登录时必须提供学校 sid 或 class URL encoded sid；也可使用 `--encoded-sid`，或传入完整 class login URL。中文校名请先用 `pu schools search` 查出数字 sid。
+登录时必须提供学校 sid 或 class URL encoded sid；也可使用 `--encoded-sid`，或传入完整 class login URL。中文校名请先用 `uv run --python 3.12 --no-sync pu schools search` 查出数字 sid。
 
 活动列表和详情默认优先使用本地缓存，避免频繁刷新请求；需要实时数据时使用 `--refresh`。`pu activities joined` 会标明每场是否已签到。`pu erke` 只打印各活动类型已签到次数。
 
@@ -52,15 +62,15 @@ MCP 与 CLI 同一套能力（登录除外）。七个工具：
 - `attendance_counts`
 - `join_activity`
 
-登录只走 CLI `pu login`。调用 `join_activity` 前应在对话里问用户是否报名。进度只给已签到次数；认定规则在 glossary。
+登录只走 CLI：`uv run --python 3.12 --no-sync pu login --sid …`（已激活 `.venv` 时也可用裸 `pu login`）。调用 `join_activity` 前应在对话里问用户是否报名。进度只给已签到次数；认定规则在 glossary。
 
 Grok 本机 stdio 启动（`--no-sync` 避免 `uv run` 文件锁挡住 initialize）：
 
-```powershell
+```bash
 uv run --python 3.12 --no-sync pu mcp
 ```
 
-项目 `.grok/config.toml` 使用同一组参数：
+项目 `.grok/config.toml` 给 **cwd = 仓库根 / repo root** 的本机 grok 用，**不含 `--directory`**：
 
 ```toml
 [mcp_servers.pu]
@@ -68,6 +78,8 @@ command = "uv"
 args = ["run", "--python", "3.12", "--no-sync", "pu", "mcp"]
 startup_timeout_sec = 60
 ```
+
+Grok Bot（AddMcpServer，无 cwd）必须用 `--directory` 指向仓库绝对路径。粘贴参数见 [docs/agents/grok-bot-linux-mcp.md](docs/agents/grok-bot-linux-mcp.md)。
 
 ## 配置
 
@@ -80,11 +92,11 @@ startup_timeout_sec = 60
 - `PU_MAX_RETRIES`：默认 `2`
 - `PU_ACTIVITY_CACHE_TTL_SECONDS`：活动缓存 TTL，默认 `300`
 
-token 优先保存到 OS keyring。若 keyring 不可用，工具会显式使用本地 fallback 文件并给出风险提示；不会保存明文密码。
+token 优先保存到 OS keyring。若 keyring 不可用，会落到本地文件 `~/.pu_tool/session.json`（POSIX 权限 `0600`），并给出风险提示。本地文件安全性低于 OS keyring，请保护本机/用户账户；不要提交该文件。不保存密码（passwords never stored；只存 token/session）。
 
 ## 测试
 
-```powershell
+```bash
 uv run --python 3.12 pytest -v
 uv run --python 3.12 ruff check .
 ```
