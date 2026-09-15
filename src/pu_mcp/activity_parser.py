@@ -24,6 +24,9 @@ SIGNUP_END_FIELDS = ("applyEndTime", "signup_end", "signupEndTime")
 LOCATION_FIELDS = ("address", "location", "place")
 ORGANIZER_FIELDS = ("organizer", "host", "clubName")
 STATUS_FIELDS = ("status", "state")
+STATUS_CODE_FIELDS = STATUS_FIELDS
+STATUS_NAME_FIELDS = ("statusName", "status_name")
+CONTENT_FIELDS = ("description", "content")
 SIGNED_IN_FIELDS = (
     "signedIn",
     "signed_in",
@@ -185,6 +188,17 @@ def parse_activity(raw: dict[str, Any]) -> Activity:
         raise ParseError("activity is missing id or title")
     score_items = _score_items(raw)
     credits = " / ".join(f"{item.label}:{item.value}{item.unit}" for item in score_items) or None
+    content = _first(raw, CONTENT_FIELDS)
+    human_status = _first(raw, STATUS_NAME_FIELDS)
+    status_code_value = _first(raw, STATUS_CODE_FIELDS)
+    status_code = str(status_code_value) if status_code_value is not None else None
+    # statusName is the human label; bare numeric status/state is status_code only.
+    if human_status is not None:
+        status = str(human_status)
+    elif status_code is not None and status_code.isdigit():
+        status = None
+    else:
+        status = status_code
     # list/myList lack type names; detail has categoryName after flattening baseInfo.
     return Activity(
         activity_id=str(activity_id),
@@ -196,7 +210,9 @@ def parse_activity(raw: dict[str, Any]) -> Activity:
         signup_end_time=_parse_datetime(_first(raw, SIGNUP_END_FIELDS)),
         location=_first(raw, LOCATION_FIELDS),
         organizer=_first(raw, ORGANIZER_FIELDS),
-        status=_first(raw, STATUS_FIELDS),
+        content=content,
+        status=status,
+        status_code=status_code,
         signed_in=_parse_signed_in(raw),
         credits=credits,
         score_items=score_items,
@@ -215,9 +231,7 @@ def parse_activity_list(response: dict[str, Any]) -> list[Activity]:
     return [parse_activity(item) for item in items]
 
 
-def parse_activity_detail(
-    response: dict[str, Any], *, activity_id: str | None = None
-) -> Activity:
+def parse_activity_detail(response: dict[str, Any], *, activity_id: str | None = None) -> Activity:
     data = _data(response)
     if not isinstance(data, dict):
         raise ParseError("activity detail data is invalid")

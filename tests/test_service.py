@@ -391,9 +391,7 @@ def _joined_item(activity_id: str, title: str, activity_type: str, **fields: obj
 async def test_service_joined_activities_parse_signed_in_from_pu_fields(
     fixture_json, tmp_path, fields, expected
 ):
-    payload = _joined_payload(
-        [_joined_item("ACT-2001", "签到合成活动", "校园文化", **fields)]
-    )
+    payload = _joined_payload([_joined_item("ACT-2001", "签到合成活动", "校园文化", **fields)])
     service = _make_service(FakeClient(fixture_json, my_list_payload=payload), tmp_path)
 
     joined = await service.joined_activities()
@@ -497,8 +495,7 @@ async def test_service_joined_activities_merges_types_1_to_3(fixture_json, tmp_p
 @pytest.mark.asyncio
 async def test_service_joined_activities_paginates_via_page_info(fixture_json, tmp_path):
     type1_items = [
-        _joined_item(f"ACT-P{index:02d}", f"分页活动{index}", "校园文化")
-        for index in range(1, 22)
+        _joined_item(f"ACT-P{index:02d}", f"分页活动{index}", "校园文化") for index in range(1, 22)
     ]
 
     def handler(list_type, page, limit):
@@ -513,9 +510,7 @@ async def test_service_joined_activities_paginates_via_page_info(fixture_json, t
 
     joined = await service.joined_activities()
 
-    assert [item.activity_id for item in joined] == [
-        f"ACT-P{index:02d}" for index in range(1, 22)
-    ]
+    assert [item.activity_id for item in joined] == [f"ACT-P{index:02d}" for index in range(1, 22)]
     assert [call for call in client.my_list_calls if call["type"] == 1] == [
         {"type": 1, "page": 1, "limit": 20},
         {"type": 1, "page": 2, "limit": 20},
@@ -523,9 +518,7 @@ async def test_service_joined_activities_paginates_via_page_info(fixture_json, t
 
 
 @pytest.mark.asyncio
-async def test_service_joined_activities_empty_type_still_merges_others(
-    fixture_json, tmp_path
-):
+async def test_service_joined_activities_empty_type_still_merges_others(fixture_json, tmp_path):
     items = {
         1: [],
         2: [_joined_item("ACT-E2", "类型2活动", "学术讲座")],
@@ -550,8 +543,7 @@ async def test_service_joined_activities_stops_on_full_last_page_via_page_info(
     fixture_json, tmp_path
 ):
     type1_items = [
-        _joined_item(f"ACT-F{index:02d}", f"满页活动{index}", "校园文化")
-        for index in range(1, 41)
+        _joined_item(f"ACT-F{index:02d}", f"满页活动{index}", "校园文化") for index in range(1, 41)
     ]
 
     def handler(list_type, page, limit):
@@ -570,9 +562,7 @@ async def test_service_joined_activities_stops_on_full_last_page_via_page_info(
 
     assert len(joined) == 40
     assert len({item.activity_id for item in joined}) == 40
-    assert [item.activity_id for item in joined] == [
-        f"ACT-F{index:02d}" for index in range(1, 41)
-    ]
+    assert [item.activity_id for item in joined] == [f"ACT-F{index:02d}" for index in range(1, 41)]
     assert [call for call in client.my_list_calls if call["type"] == 1] == [
         {"type": 1, "page": 1, "limit": 20},
         {"type": 1, "page": 2, "limit": 20},
@@ -580,9 +570,7 @@ async def test_service_joined_activities_stops_on_full_last_page_via_page_info(
 
 
 @pytest.mark.asyncio
-async def test_service_joined_activities_full_page_without_page_info_stops(
-    fixture_json, tmp_path
-):
+async def test_service_joined_activities_full_page_without_page_info_stops(fixture_json, tmp_path):
     type1_items = [
         _joined_item(f"ACT-N{index:02d}", f"无分页信息{index}", "校园文化")
         for index in range(1, 21)
@@ -600,21 +588,16 @@ async def test_service_joined_activities_full_page_without_page_info_stops(
 
     joined = await service.joined_activities()
 
-    assert [item.activity_id for item in joined] == [
-        f"ACT-N{index:02d}" for index in range(1, 21)
-    ]
+    assert [item.activity_id for item in joined] == [f"ACT-N{index:02d}" for index in range(1, 21)]
     assert [call for call in client.my_list_calls if call["type"] == 1] == [
         {"type": 1, "page": 1, "limit": 20},
     ]
 
 
 @pytest.mark.asyncio
-async def test_service_joined_activities_unparsable_page_info_stops(
-    fixture_json, tmp_path
-):
+async def test_service_joined_activities_unparsable_page_info_stops(fixture_json, tmp_path):
     type1_items = [
-        _joined_item(f"ACT-G{index:02d}", f"垃圾分页{index}", "校园文化")
-        for index in range(1, 21)
+        _joined_item(f"ACT-G{index:02d}", f"垃圾分页{index}", "校园文化") for index in range(1, 21)
     ]
 
     def handler(list_type, page, limit):
@@ -675,11 +658,24 @@ def _live_info(
     category_name: str | None,
     has_sign_in: int,
     name: str = "合成活动",
+    *,
+    description: str | None = None,
+    address: str | None = None,
+    status_name: str | None = None,
+    status: object | None = None,
 ) -> dict:
     # Live PU activity/info omits data.id; callers pass list-side id separately.
     base_info: dict[str, object] = {"name": name}
     if category_name is not None:
         base_info["categoryName"] = category_name
+    if description is not None:
+        base_info["description"] = description
+    if address is not None:
+        base_info["address"] = address
+    if status_name is not None:
+        base_info["statusName"] = status_name
+    if status is not None:
+        base_info["status"] = status
     return {
         "code": 0,
         "msg": "ok",
@@ -702,12 +698,8 @@ def _live_info_by_id(details: dict[str, dict]) -> object:
 async def test_list_activities_enriches_unknown_type_from_info(fixture_json, tmp_path):
     client = FakeClient(
         fixture_json,
-        activity_list_payload=_joined_payload(
-            [_live_list_item(1001, "校园文化合成活动")]
-        ),
-        activity_info_handler=lambda _id: _live_info(
-            1001, "校园文化", 1, name="校园文化合成活动"
-        ),
+        activity_list_payload=_joined_payload([_live_list_item(1001, "校园文化合成活动")]),
+        activity_info_handler=lambda _id: _live_info(1001, "校园文化", 1, name="校园文化合成活动"),
     )
     service = _make_service(client, tmp_path)
 
@@ -724,9 +716,7 @@ async def test_joined_activities_enriches_unknown_type_from_info(fixture_json, t
     client = FakeClient(
         fixture_json,
         my_list_payload=_joined_payload([_live_list_item(1001, "思想引领合成活动")]),
-        activity_info_handler=lambda _id: _live_info(
-            1001, "思想引领", 1, name="思想引领合成活动"
-        ),
+        activity_info_handler=lambda _id: _live_info(1001, "思想引领", 1, name="思想引领合成活动"),
     )
     service = _make_service(client, tmp_path)
 
@@ -739,9 +729,7 @@ async def test_joined_activities_enriches_unknown_type_from_info(fixture_json, t
 
 
 @pytest.mark.asyncio
-async def test_list_activities_does_not_overwrite_known_type_via_enrichment(
-    fixture_json, tmp_path
-):
+async def test_list_activities_does_not_overwrite_known_type_via_enrichment(fixture_json, tmp_path):
     client = FakeClient(
         fixture_json,
         activity_info_handler=lambda _id: _live_info(1001, "校园文化", 1),
@@ -751,16 +739,13 @@ async def test_list_activities_does_not_overwrite_known_type_via_enrichment(
     activities = await service.list_activities()
 
     assert activities[0].activity_type == "志愿公益"
-    assert client.activity_info_calls == 0
 
 
 @pytest.mark.asyncio
 async def test_joined_activities_does_not_overwrite_known_type_via_enrichment(
     fixture_json, tmp_path
 ):
-    payload = _joined_payload(
-        [_joined_item("ACT-2001", "已知类型活动", "志愿公益", signedIn=True)]
-    )
+    payload = _joined_payload([_joined_item("ACT-2001", "已知类型活动", "志愿公益", signedIn=True)])
     client = FakeClient(
         fixture_json,
         my_list_payload=payload,
@@ -772,7 +757,6 @@ async def test_joined_activities_does_not_overwrite_known_type_via_enrichment(
 
     assert joined[0].activity_type == "志愿公益"
     assert joined[0].signed_in is True
-    assert client.activity_info_calls == 0
 
 
 @pytest.mark.asyncio
@@ -816,9 +800,7 @@ async def test_list_activities_enrichment_survives_info_failure(fixture_json, tm
 
 
 @pytest.mark.asyncio
-async def test_attendance_counts_from_live_my_list_via_info_enrichment(
-    fixture_json, tmp_path
-):
+async def test_attendance_counts_from_live_my_list_via_info_enrichment(fixture_json, tmp_path):
     items = [
         _live_list_item(1, "实践已签"),
         _live_list_item(2, "实践未签"),
@@ -934,9 +916,7 @@ async def test_cached_list_shaped_unknown_later_fetches_info(fixture_json, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_list_activities_refresh_retries_info_for_list_shaped_unknown(
-    fixture_json, tmp_path
-):
+async def test_list_activities_refresh_retries_info_for_list_shaped_unknown(fixture_json, tmp_path):
     fail_info = {"value": True}
 
     def handler(_activity_id):
@@ -987,9 +967,7 @@ async def test_detail_shaped_unknown_does_not_refetch_info(fixture_json, tmp_pat
 async def test_activity_detail_skips_list_shaped_unknown_cache(fixture_json, tmp_path):
     client = FakeClient(
         fixture_json,
-        activity_info_handler=lambda _id: _live_info(
-            1001, "校园文化", 1, name="校园文化合成活动"
-        ),
+        activity_info_handler=lambda _id: _live_info(1001, "校园文化", 1, name="校园文化合成活动"),
     )
     service = _make_service(client, tmp_path)
     service.storage.cache_activity(parse_activity(_live_list_item(1001, "校园文化合成活动")))
@@ -1007,9 +985,7 @@ async def test_activity_detail_skips_list_shaped_unknown_cache(fixture_json, tmp
 async def test_activity_detail_backfills_id_when_info_omits_id(fixture_json, tmp_path):
     client = FakeClient(
         fixture_json,
-        activity_info_handler=lambda _id: _live_info(
-            1001, "校园文化", 1, name="校园文化合成活动"
-        ),
+        activity_info_handler=lambda _id: _live_info(1001, "校园文化", 1, name="校园文化合成活动"),
     )
     service = _make_service(client, tmp_path)
 
@@ -1023,9 +999,7 @@ async def test_activity_detail_backfills_id_when_info_omits_id(fixture_json, tmp
 
 
 @pytest.mark.asyncio
-async def test_list_activities_skips_catalog_cache_for_noncanonical_page(
-    fixture_json, tmp_path
-):
+async def test_list_activities_skips_catalog_cache_for_noncanonical_page(fixture_json, tmp_path):
     client = FakeClient(fixture_json)
     service = _make_service(client, tmp_path)
 
@@ -1036,12 +1010,8 @@ async def test_list_activities_skips_catalog_cache_for_noncanonical_page(
 
 
 @pytest.mark.asyncio
-async def test_joined_enriches_sign_in_when_type_known_but_sign_missing(
-    fixture_json, tmp_path
-):
-    payload = _joined_payload(
-        [_joined_item("1001", "已知类型缺签到字段", "社会实践")]
-    )
+async def test_joined_enriches_sign_in_when_type_known_but_sign_missing(fixture_json, tmp_path):
+    payload = _joined_payload([_joined_item("1001", "已知类型缺签到字段", "社会实践")])
     client = FakeClient(
         fixture_json,
         my_list_payload=payload,
@@ -1062,18 +1032,12 @@ async def test_joined_enriches_sign_in_when_type_known_but_sign_missing(
 
 
 @pytest.mark.asyncio
-async def test_enrichment_no_id_info_keeps_list_id_and_merges_type_sign_in(
-    fixture_json, tmp_path
-):
+async def test_enrichment_no_id_info_keeps_list_id_and_merges_type_sign_in(fixture_json, tmp_path):
     client = FakeClient(
         fixture_json,
-        activity_list_payload=_joined_payload(
-            [_live_list_item(1001, "校园文化合成活动")]
-        ),
+        activity_list_payload=_joined_payload([_live_list_item(1001, "校园文化合成活动")]),
         my_list_payload=_joined_payload([_live_list_item(1001, "校园文化合成活动")]),
-        activity_info_handler=lambda _id: _live_info(
-            9999, "校园文化", 1, name="校园文化合成活动"
-        ),
+        activity_info_handler=lambda _id: _live_info(9999, "校园文化", 1, name="校园文化合成活动"),
     )
     service = _make_service(client, tmp_path)
 
@@ -1143,3 +1107,191 @@ async def test_login_and_logout_clear_activity_caches(fixture_json, tmp_path):
     assert service.storage.get_cached_activity_list()
     service.logout()
     assert service.storage.get_cached_activity_list() == []
+
+
+def _complete_list_item(activity_id: str, title: str, activity_type: str, **fields: object) -> dict:
+    payload = {
+        "id": activity_id,
+        "title": title,
+        "typeName": activity_type,
+        "description": "已有正文",
+        "address": "虚构活动室 A",
+        "statusName": "进行中",
+        "status": 5,
+        "hasSignIn": 1,
+    }
+    payload.update(fields)
+    return payload
+
+
+@pytest.mark.asyncio
+async def test_list_activities_enriches_content_location_status_from_info(fixture_json, tmp_path):
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload(
+            [_live_list_item(1001, "校园文化合成活动", typeName="校园文化", hasSignIn=1)]
+        ),
+        activity_info_handler=lambda _id: _live_info(
+            1001,
+            "思想引领",
+            0,
+            name="校园文化合成活动",
+            description="活动正文",
+            address="虚构活动室 A",
+            status_name="未开始",
+            status=21,
+        ),
+    )
+    service = _make_service(client, tmp_path)
+
+    activities = await service.list_activities()
+
+    assert activities[0].content == "活动正文"
+    assert activities[0].location == "虚构活动室 A"
+    assert activities[0].status == "未开始"
+    assert activities[0].status_code == "21"
+    assert activities[0].activity_type == "校园文化"
+    assert activities[0].signed_in is True
+    assert client.activity_info_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_joined_activities_enriches_content_location_status_from_info(fixture_json, tmp_path):
+    client = FakeClient(
+        fixture_json,
+        my_list_payload=_joined_payload(
+            [_joined_item("1001", "已知类型活动", "志愿公益", signedIn=True)]
+        ),
+        activity_info_handler=lambda _id: _live_info(
+            1001,
+            "校园文化",
+            0,
+            name="已知类型活动",
+            description="报名活动正文",
+            address="虚构报告厅",
+            status_name="进行中",
+            status=5,
+        ),
+    )
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+
+    assert joined[0].content == "报名活动正文"
+    assert joined[0].location == "虚构报告厅"
+    assert joined[0].status == "进行中"
+    assert joined[0].status_code == "5"
+    assert joined[0].activity_type == "志愿公益"
+    assert joined[0].signed_in is True
+    assert client.activity_info_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_list_activities_skips_info_when_content_location_status_present(
+    fixture_json, tmp_path
+):
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload(
+            [_complete_list_item("ACT-1001", "合成志愿服务活动", "志愿公益")]
+        ),
+        activity_info_handler=lambda _id: _live_info(
+            "ACT-1001",
+            "校园文化",
+            0,
+            name="合成志愿服务活动",
+            description="详情正文",
+            address="详情地点",
+            status_name="未开始",
+            status=21,
+        ),
+    )
+    service = _make_service(client, tmp_path)
+
+    activities = await service.list_activities()
+
+    assert client.activity_info_calls == 0
+    assert activities[0].content == "已有正文"
+    assert activities[0].location == "虚构活动室 A"
+    assert activities[0].status == "进行中"
+    assert activities[0].status_code == "5"
+    assert activities[0].activity_type == "志愿公益"
+
+
+@pytest.mark.asyncio
+async def test_joined_activities_skips_info_when_content_location_status_present(
+    fixture_json, tmp_path
+):
+    client = FakeClient(
+        fixture_json,
+        my_list_payload=_joined_payload(
+            [_complete_list_item("ACT-2001", "已知类型活动", "志愿公益")]
+        ),
+        activity_info_handler=lambda _id: _live_info(
+            "ACT-2001",
+            "校园文化",
+            0,
+            name="已知类型活动",
+            description="详情正文",
+            address="详情地点",
+            status_name="未开始",
+            status=21,
+        ),
+    )
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+
+    assert client.activity_info_calls == 0
+    assert joined[0].content == "已有正文"
+    assert joined[0].location == "虚构活动室 A"
+    assert joined[0].status == "进行中"
+    assert joined[0].status_code == "5"
+    assert joined[0].activity_type == "志愿公益"
+    assert joined[0].signed_in is True
+
+
+@pytest.mark.asyncio
+async def test_enrichment_does_not_overwrite_known_status_or_location_with_empty(
+    fixture_json, tmp_path
+):
+    payload = _joined_payload(
+        [
+            {
+                "id": "ACT-1001",
+                "title": "合成活动",
+                "typeName": "志愿公益",
+                "address": "虚构活动室 A",
+                "status": "open",
+                "hasSignIn": 1,
+            }
+        ]
+    )
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=payload,
+        my_list_payload=payload,
+        activity_info_handler=lambda _id: _live_info(
+            "ACT-1001",
+            "校园文化",
+            0,
+            name="合成活动",
+            description="详情正文",
+            address="",
+            status_name="",
+        ),
+    )
+    service = _make_service(client, tmp_path)
+
+    listed = await service.list_activities()
+    joined = await service.joined_activities()
+
+    assert listed[0].status == "open"
+    assert listed[0].status_code == "open"
+    assert listed[0].location == "虚构活动室 A"
+    assert listed[0].content == "详情正文"
+    assert listed[0].activity_type == "志愿公益"
+    assert listed[0].signed_in is True
+    assert joined[0].status == "open"
+    assert joined[0].location == "虚构活动室 A"
+    assert joined[0].signed_in is True

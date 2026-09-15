@@ -145,6 +145,7 @@ def activities_list(
     table.add_column("活动 ID")
     table.add_column("标题")
     table.add_column("类型")
+    table.add_column("状态")
     table.add_column("报名时间")
     table.add_column("活动时间")
     table.add_column("加分/学分/积分")
@@ -153,6 +154,7 @@ def activities_list(
             item.activity_id,
             item.title,
             item.activity_type,
+            item.status or "-",
             f"{item.signup_start_time or '-'} ~ {item.signup_end_time or '-'}",
             f"{item.start_time or '-'} ~ {item.end_time or '-'}",
             _score_summary(item),
@@ -180,6 +182,8 @@ def activities_info(
     console.print(f"类型：{activity.activity_type}")
     console.print(f"组织方：{activity.organizer or '-'}")
     console.print(f"地点：{activity.location or '-'}")
+    console.print(f"内容：{activity.content or '-'}")
+    console.print(f"状态：{activity.status or '-'}")
     console.print(f"报名：{activity.signup_start_time or '-'} ~ {activity.signup_end_time or '-'}")
     console.print(f"活动：{activity.start_time or '-'} ~ {activity.end_time or '-'}")
     console.print(f"加分/学分/积分：{_score_summary(activity)}")
@@ -204,6 +208,7 @@ def joined_activities(json_output: Annotated[bool, typer.Option("--json")] = Fal
     table.add_column("活动 ID")
     table.add_column("标题")
     table.add_column("类型")
+    table.add_column("状态")
     table.add_column("签到")
     table.add_column("加分/学分/积分")
     for item in activities:
@@ -211,6 +216,7 @@ def joined_activities(json_output: Annotated[bool, typer.Option("--json")] = Fal
             item.activity_id,
             item.title,
             item.activity_type,
+            item.status or "-",
             "已签到" if item.signed_in else "未签到",
             _score_summary(item),
         )

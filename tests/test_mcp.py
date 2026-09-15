@@ -203,6 +203,9 @@ async def test_mcp_list_joined_includes_signed_in_without_raw(monkeypatch):
     assert payload["activities"][0]["activity_id"] == "ACT-2001"
     assert payload["activities"][0]["signed_in"] is True
     assert payload["activities"][1]["signed_in"] is False
+    assert "content" in payload["activities"][0]
+    assert "status" in payload["activities"][0]
+    assert "status_code" in payload["activities"][0]
     assert "raw" not in payload["activities"][0]
     assert "internal" not in str(payload)
 

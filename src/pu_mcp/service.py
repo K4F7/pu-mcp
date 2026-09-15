@@ -219,18 +219,43 @@ class PuService:
         semaphore = asyncio.Semaphore(ENRICH_CONCURRENCY)
 
         async def enrich_one(activity: Activity) -> Activity:
+            sign_resolved = _sign_in_resolved(activity)
             needs_type = activity.activity_type == "未知"
-            needs_sign = resolve_sign_in and not _sign_in_resolved(activity)
-            if (not needs_type and not needs_sign) or not activity.activity_id:
+            needs_sign = resolve_sign_in and not sign_resolved
+            needs_content = not activity.content
+            needs_location = not activity.location
+            needs_status = not activity.status
+            needs_status_code = not activity.status_code
+            if (
+                not needs_type
+                and not needs_sign
+                and not needs_content
+                and not needs_location
+                and not needs_status
+                and not needs_status_code
+            ) or not activity.activity_id:
                 return activity
             try:
                 async with semaphore:
                     detail = await self.activity_detail(activity.activity_id, refresh=False)
             except PuToolError:
                 return activity
-            updates: dict[str, object] = {"signed_in": detail.signed_in}
+            updates: dict[str, object] = {}
+            # Copy signed_in only when the list payload has no sign-in flag.
+            if not sign_resolved:
+                updates["signed_in"] = detail.signed_in
             if needs_type and detail.activity_type != "未知":
                 updates["activity_type"] = detail.activity_type
+            if needs_content and detail.content:
+                updates["content"] = detail.content
+            if needs_location and detail.location:
+                updates["location"] = detail.location
+            if needs_status and detail.status:
+                updates["status"] = detail.status
+            if needs_status_code and detail.status_code:
+                updates["status_code"] = detail.status_code
+            if not updates:
+                return activity
             return activity.model_copy(update=updates)
 
         return list(await asyncio.gather(*[enrich_one(activity) for activity in activities]))
@@ -282,9 +307,7 @@ def _first_int(mapping: dict, *keys: str) -> int | None:
     return None
 
 
-def _my_list_has_more_pages(
-    *, data: object, item_count: int, page: int, limit: int
-) -> bool:
+def _my_list_has_more_pages(*, data: object, item_count: int, page: int, limit: int) -> bool:
     # Paginate via pageInfo. Empty/short pages always stop. A full page with
     # no usable pageInfo also stops so a missing total cannot loop forever.
     if item_count == 0 or item_count < limit:
@@ -297,8 +320,6 @@ def _my_list_has_more_pages(
     if total is not None:
         return page * limit < total
     return False
-
-
 
 
 def _is_canonical_list_filters(filters: dict[str, object]) -> bool:
@@ -323,9 +344,7 @@ def _raw_has_signed_in_field(raw: object) -> bool:
         return True
     for key in ("userStatus", "user_status"):
         nested = raw.get(key)
-        if isinstance(nested, dict) and (
-            "hasSignIn" in nested or "has_sign_in" in nested
-        ):
+        if isinstance(nested, dict) and ("hasSignIn" in nested or "has_sign_in" in nested):
             return True
     return False
 

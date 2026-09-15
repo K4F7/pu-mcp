@@ -72,6 +72,17 @@ MCP 与 CLI 同一套能力（登录除外）。七个工具：
 
 登录只走 CLI：`uv run --python 3.12 --no-sync pu login --sid …`（已激活 `.venv` 时也可用裸 `pu login`）。MCP 不收密码、不提供 login 工具。无 TTY / agent 用 `-u -p --sid` 或 `PU_USERNAME` / `PU_PASSWORD` + `--sid`，不要把密码贴进对话。调用 `join_activity` 前应在对话里问用户是否报名。进度只给已签到次数；认定规则在 glossary。
 
+活动字段（MCP `list_activities` / `activity_detail` / `list_joined` 与 CLI `activities list` / `info` / `joined` 同一模型）：
+
+- `title`：标题（`title` / `name`）
+- `content`：正文，优先 `description`，否则 `content`；空字符串为 null
+- `location`：地点（`address` / `location`）；列表常缺，详情/enrich 补齐
+- `status`：人读状态（`statusName` / `status_name`）；不把纯数字码当状态
+- `status_code`：原始 `status` / `state` 的字符串形式
+- `activity_type`：类型（`categoryName` / `typeName`）；列表常为「未知」，enrich 后补齐
+
+筛选：MCP/CLI 可用 `activity_type`；`keyword` 匹配缓存列表的 id 和标题，不是地点过滤器。`location` 只读，不是查询参数。
+
 Grok 本机 stdio 启动（`--no-sync` 避免 `uv run` 文件锁挡住 initialize）：
 
 ```bash

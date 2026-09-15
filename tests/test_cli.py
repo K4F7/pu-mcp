@@ -32,6 +32,10 @@ class MockService:
                 activity_id="ACT-1001",
                 title="合成志愿服务活动",
                 activity_type="志愿公益",
+                location="虚构活动室 A",
+                content="合成活动说明正文",
+                status="进行中",
+                status_code="5",
                 score_items=[
                     ScoreItem(
                         kind="credit", label="加分", value="2", unit="分", source_field="score"
@@ -47,7 +51,7 @@ class MockService:
             )
         ]
 
-    async def activity_detail(self, activity_id):
+    async def activity_detail(self, activity_id, refresh=False):
         return (await self.list_activities())[0]
 
     async def joined_activities(self):
@@ -179,6 +183,7 @@ def test_cli_activity_list_displays_type_and_scores(monkeypatch):
     assert result.exit_code == 0
     assert "志愿公益" in result.output
     assert "加分:2分" in result.output
+    assert "进行中" in result.output
 
 
 def test_cli_json_output(monkeypatch):
@@ -467,12 +472,16 @@ def test_cli_activities_joined_marks_signed_in(monkeypatch):
                     activity_id="ACT-2001",
                     title="校园文化讲座",
                     activity_type="校园文化",
+                    status="进行中",
+                    status_code="5",
                     signed_in=True,
                 ),
                 Activity(
                     activity_id="ACT-2002",
                     title="社会实践调研",
                     activity_type="社会实践",
+                    status="未开始",
+                    status_code="21",
                     signed_in=False,
                 ),
             ]
@@ -485,10 +494,31 @@ def test_cli_activities_joined_marks_signed_in(monkeypatch):
     unsigned_line = next(line for line in plain.splitlines() if "ACT-2002" in line)
     assert "已签到" in signed_line
     assert "未签到" not in signed_line
+    assert "进行中" in signed_line
     assert "未签到" in unsigned_line
+    assert "未开始" in unsigned_line
 
     json_result = runner.invoke(cli.app, ["activities", "joined", "--json"])
     assert json_result.exit_code == 0
     payload = json.loads(_plain(json_result.output))
     assert payload[0]["signed_in"] is True
     assert payload[1]["signed_in"] is False
+    assert payload[0]["status"] == "进行中"
+    assert payload[0]["status_code"] == "5"
+
+
+def test_cli_activities_info_prints_content_and_human_status(monkeypatch):
+    monkeypatch.setattr(cli, "build_service", lambda: MockService())
+    result = runner.invoke(cli.app, ["activities", "info", "ACT-1001"])
+    assert result.exit_code == 0
+    plain = _plain(result.output)
+    assert "内容：合成活动说明正文" in plain
+    assert "状态：进行中" in plain
+    assert "5" not in plain.split("状态：", 1)[1].splitlines()[0]
+
+    json_result = runner.invoke(cli.app, ["activities", "info", "ACT-1001", "--json"])
+    assert json_result.exit_code == 0
+    payload = json.loads(_plain(json_result.output))
+    assert payload["content"] == "合成活动说明正文"
+    assert payload["status"] == "进行中"
+    assert payload["status_code"] == "5"
