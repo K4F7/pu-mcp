@@ -215,8 +215,13 @@ def parse_activity_list(response: dict[str, Any]) -> list[Activity]:
     return [parse_activity(item) for item in items]
 
 
-def parse_activity_detail(response: dict[str, Any]) -> Activity:
+def parse_activity_detail(
+    response: dict[str, Any], *, activity_id: str | None = None
+) -> Activity:
     data = _data(response)
     if not isinstance(data, dict):
         raise ParseError("activity detail data is invalid")
-    return parse_activity(data)
+    payload = _flatten_nested_activity_fields(data)
+    if _first(payload, ID_FIELDS) in (None, "") and activity_id not in (None, ""):
+        payload["id"] = activity_id
+    return parse_activity(payload)

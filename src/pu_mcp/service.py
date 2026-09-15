@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 
 from pu_mcp.activity_parser import (
@@ -29,6 +30,7 @@ COUNTABLE_ACTIVITY_TYPES = (
 JOINED_LIST_TYPES = (1, 2, 3)
 MY_LIST_PAGE_LIMIT = 20
 MY_LIST_MAX_PAGES = 50
+ENRICH_CONCURRENCY = 6
 
 
 class PuService:
@@ -134,7 +136,9 @@ class PuService:
             )
             if cached is not None and not is_list_shaped_unknown(cached):
                 return cached
-        activity = parse_activity_detail(await self.client.activity_info(activity_id))
+        activity = parse_activity_detail(
+            await self.client.activity_info(activity_id), activity_id=activity_id
+        )
         self.storage.cache_activity(activity)
         return activity
 
@@ -212,23 +216,24 @@ class PuService:
     async def _enrich_activities(
         self, activities: list[Activity], *, resolve_sign_in: bool
     ) -> list[Activity]:
-        enriched: list[Activity] = []
-        for activity in activities:
+        semaphore = asyncio.Semaphore(ENRICH_CONCURRENCY)
+
+        async def enrich_one(activity: Activity) -> Activity:
             needs_type = activity.activity_type == "未知"
             needs_sign = resolve_sign_in and not _sign_in_resolved(activity)
             if (not needs_type and not needs_sign) or not activity.activity_id:
-                enriched.append(activity)
-                continue
+                return activity
             try:
-                detail = await self.activity_detail(activity.activity_id, refresh=False)
+                async with semaphore:
+                    detail = await self.activity_detail(activity.activity_id, refresh=False)
             except PuToolError:
-                enriched.append(activity)
-                continue
+                return activity
             updates: dict[str, object] = {"signed_in": detail.signed_in}
             if needs_type and detail.activity_type != "未知":
                 updates["activity_type"] = detail.activity_type
-            enriched.append(activity.model_copy(update=updates))
-        return enriched
+            return activity.model_copy(update=updates)
+
+        return list(await asyncio.gather(*[enrich_one(activity) for activity in activities]))
 
     def _filter_cached_activities(
         self, activities: list[Activity], filters: dict[str, object]

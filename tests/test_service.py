@@ -676,6 +676,7 @@ def _live_info(
     has_sign_in: int,
     name: str = "合成活动",
 ) -> dict:
+    # Live PU activity/info omits data.id; callers pass list-side id separately.
     base_info: dict[str, object] = {"name": name}
     if category_name is not None:
         base_info["categoryName"] = category_name
@@ -683,7 +684,6 @@ def _live_info(
         "code": 0,
         "msg": "ok",
         "data": {
-            "id": activity_id,
             "puType": 0,
             "baseInfo": base_info,
             "userStatus": {"hasSignIn": has_sign_in, "hasJoin": 1},
@@ -996,10 +996,30 @@ async def test_activity_detail_skips_list_shaped_unknown_cache(fixture_json, tmp
 
     detail = await service.activity_detail("1001", refresh=False)
 
+    assert detail.activity_id == "1001"
     assert detail.activity_type == "校园文化"
     assert detail.signed_in is True
     assert client.activity_info_calls == 1
     assert "baseInfo" in detail.raw
+
+
+@pytest.mark.asyncio
+async def test_activity_detail_backfills_id_when_info_omits_id(fixture_json, tmp_path):
+    client = FakeClient(
+        fixture_json,
+        activity_info_handler=lambda _id: _live_info(
+            1001, "校园文化", 1, name="校园文化合成活动"
+        ),
+    )
+    service = _make_service(client, tmp_path)
+
+    detail = await service.activity_detail("1001")
+
+    assert detail.activity_id == "1001"
+    assert detail.title == "校园文化合成活动"
+    assert detail.activity_type == "校园文化"
+    assert detail.signed_in is True
+    assert client.activity_info_ids == ["1001"]
 
 
 @pytest.mark.asyncio
@@ -1025,7 +1045,9 @@ async def test_joined_enriches_sign_in_when_type_known_but_sign_missing(
     client = FakeClient(
         fixture_json,
         my_list_payload=payload,
-        activity_info_handler=lambda _id: _live_info(1001, "校园文化", 1, name="已知类型缺签到字段"),
+        activity_info_handler=lambda _id: _live_info(
+            1001, "校园文化", 1, name="已知类型缺签到字段"
+        ),
     )
     service = _make_service(client, tmp_path)
 
@@ -1037,6 +1059,70 @@ async def test_joined_enriches_sign_in_when_type_known_but_sign_missing(
     assert client.activity_info_calls >= 1
     assert counts["社会实践"] == 1
     assert counts["校园文化"] == 0
+
+
+@pytest.mark.asyncio
+async def test_enrichment_no_id_info_keeps_list_id_and_merges_type_sign_in(
+    fixture_json, tmp_path
+):
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload(
+            [_live_list_item(1001, "校园文化合成活动")]
+        ),
+        my_list_payload=_joined_payload([_live_list_item(1001, "校园文化合成活动")]),
+        activity_info_handler=lambda _id: _live_info(
+            9999, "校园文化", 1, name="校园文化合成活动"
+        ),
+    )
+    service = _make_service(client, tmp_path)
+
+    listed = await service.list_activities()
+    joined = await service.joined_activities()
+
+    assert listed[0].activity_id == "1001"
+    assert listed[0].activity_type == "校园文化"
+    assert listed[0].signed_in is True
+    assert joined[0].activity_id == "1001"
+    assert joined[0].activity_type == "校园文化"
+    assert joined[0].signed_in is True
+
+
+@pytest.mark.asyncio
+async def test_enrichment_concurrent_preserves_order_and_merges(fixture_json, tmp_path):
+    items = [
+        _live_list_item(1, "活动甲"),
+        _live_list_item(2, "活动乙"),
+        _live_list_item(3, "活动丙"),
+        _live_list_item(4, "活动丁"),
+        _live_list_item(5, "活动戊"),
+    ]
+    details = {
+        "1": _live_info(1, "社会实践", 1, name="活动甲"),
+        "2": _live_info(2, "校园文化", 0, name="活动乙"),
+        "3": _live_info(3, "思想引领", 1, name="活动丙"),
+        "4": _live_info(4, "学术讲座", 1, name="活动丁"),
+        "5": _live_info(5, "体育健身", 0, name="活动戊"),
+    }
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload(items),
+        activity_info_handler=_live_info_by_id(details),
+    )
+    service = _make_service(client, tmp_path)
+
+    activities = await service.list_activities()
+
+    assert [item.activity_id for item in activities] == ["1", "2", "3", "4", "5"]
+    assert [item.activity_type for item in activities] == [
+        "社会实践",
+        "校园文化",
+        "思想引领",
+        "学术讲座",
+        "体育健身",
+    ]
+    assert [item.signed_in for item in activities] == [True, False, True, True, False]
+    assert set(client.activity_info_ids) == {"1", "2", "3", "4", "5"}
 
 
 @pytest.mark.asyncio
