@@ -144,6 +144,65 @@ async def test_activity_list_accepts_explicit_limit(fixture_json):
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_my_list_sends_type_page_and_limit(fixture_json):
+    route = respx.post("https://mock.local/apis/activity/myList").mock(
+        return_value=httpx.Response(200, json=fixture_json("my_list_joined.json"))
+    )
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    async with PuClient(
+        base_url="https://mock.local", session=session, min_interval_seconds=0
+    ) as client:
+        payload = await client.my_list()
+    assert payload["code"] == 0
+    assert route.calls[0].request.method == "POST"
+    assert route.calls[0].request.url.path == "/apis/activity/myList"
+    assert route.calls[0].request.content == b'{"type":1,"page":1,"limit":20}'
+    assert route.calls[0].request.headers["Authorization"] == "Bearer TEST_TOKEN:TEST_SID"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_my_list_empty_list_is_success():
+    route = respx.post("https://mock.local/apis/activity/myList").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "msg": "ok",
+                "data": {
+                    "list": [],
+                    "pageInfo": {"page": 1, "limit": 20, "total": 0, "totalPage": 0},
+                },
+            },
+        )
+    )
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    async with PuClient(
+        base_url="https://mock.local", session=session, min_interval_seconds=0
+    ) as client:
+        payload = await client.my_list()
+    assert payload["code"] == 0
+    assert payload["data"]["list"] == []
+    assert route.calls[0].request.content == b'{"type":1,"page":1,"limit":20}'
+    assert route.calls[0].request.headers["Authorization"] == "Bearer TEST_TOKEN:TEST_SID"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_my_list_accepts_explicit_type_page_and_limit(fixture_json):
+    route = respx.post("https://mock.local/apis/activity/myList").mock(
+        return_value=httpx.Response(200, json=fixture_json("my_list_joined.json"))
+    )
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    async with PuClient(
+        base_url="https://mock.local", session=session, min_interval_seconds=0
+    ) as client:
+        await client.my_list(type=2, page=3, limit=10)
+    assert route.calls[0].request.content == b'{"type":2,"page":3,"limit":10}'
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_join_activity_is_authenticated_post(fixture_json):
     route = respx.post("https://mock.local/apis/activity/join").mock(
         return_value=httpx.Response(200, json=fixture_json("activity_join_success.json"))

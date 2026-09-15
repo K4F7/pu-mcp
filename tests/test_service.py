@@ -25,9 +25,11 @@ class MemorySessionStore:
 
 
 class FakeClient:
-    def __init__(self, fixture_json, my_list_payload=None):
+    def __init__(self, fixture_json, my_list_payload=None, my_list_handler=None):
         self.fixture_json = fixture_json
         self.my_list_payload = my_list_payload
+        self.my_list_handler = my_list_handler
+        self.my_list_calls = []
         self.join_calls = 0
         self.joined_activity_ids = []
         self.activity_list_calls = 0
@@ -53,7 +55,11 @@ class FakeClient:
         self.activity_info_calls += 1
         return self.fixture_json("activity_info_credit.json")
 
-    async def my_list(self):
+    async def my_list(self, **filters):
+        params = {"type": 1, "page": 1, "limit": 20, **filters}
+        self.my_list_calls.append(params)
+        if self.my_list_handler is not None:
+            return self.my_list_handler(params["type"], params["page"], params["limit"])
         if self.my_list_payload is not None:
             return self.my_list_payload
         return self.fixture_json("my_list_joined.json")
@@ -324,8 +330,16 @@ async def test_service_join_activity_propagates_business_error(fixture_json, tmp
     assert client.joined_activity_ids == ["ACT-1001"]
 
 
-def _joined_payload(items: list[dict]) -> dict:
-    return {"code": 0, "msg": "ok", "data": {"list": items}}
+def _page_info(page: int, limit: int, total: int) -> dict:
+    total_page = (total + limit - 1) // limit if total else 0
+    return {"page": page, "limit": limit, "total": total, "totalPage": total_page}
+
+
+def _joined_payload(items: list[dict], page_info: dict | None = None) -> dict:
+    data: dict = {"list": items}
+    if page_info is not None:
+        data["pageInfo"] = page_info
+    return {"code": 0, "msg": "ok", "data": data}
 
 
 def _joined_item(activity_id: str, title: str, activity_type: str, **fields: object) -> dict:
@@ -421,3 +435,216 @@ async def test_service_attendance_counts_signed_in_countable_types_only(fixture_
         "学术讲座",
         "体育健身",
     }
+
+
+@pytest.mark.asyncio
+async def test_service_joined_activities_empty_list_is_success(fixture_json, tmp_path):
+    def handler(list_type, page, limit):
+        return _joined_payload([], _page_info(page, limit, 0))
+
+    client = FakeClient(fixture_json, my_list_handler=handler)
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+
+    assert joined == []
+
+
+@pytest.mark.asyncio
+async def test_service_joined_activities_merges_types_1_to_3(fixture_json, tmp_path):
+    items = {
+        1: [_joined_item("ACT-T1", "已报名类型1", "校园文化")],
+        2: [_joined_item("ACT-T2", "已报名类型2", "学术讲座")],
+        3: [
+            _joined_item("ACT-T3", "已报名类型3", "体育健身"),
+            _joined_item("ACT-T1", "重复的类型1活动", "校园文化"),
+        ],
+    }
+
+    def handler(list_type, page, limit):
+        rows = items.get(list_type, [])
+        return _joined_payload(rows, _page_info(page, limit, len(rows)))
+
+    client = FakeClient(fixture_json, my_list_handler=handler)
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+
+    assert [item.activity_id for item in joined] == ["ACT-T1", "ACT-T2", "ACT-T3"]
+    requested_types = [call["type"] for call in client.my_list_calls]
+    assert requested_types == [1, 2, 3]
+    assert all(call["page"] == 1 and call["limit"] == 20 for call in client.my_list_calls)
+    assert 0 not in requested_types
+    assert 4 not in requested_types
+
+
+@pytest.mark.asyncio
+async def test_service_joined_activities_paginates_via_page_info(fixture_json, tmp_path):
+    type1_items = [
+        _joined_item(f"ACT-P{index:02d}", f"分页活动{index}", "校园文化")
+        for index in range(1, 22)
+    ]
+
+    def handler(list_type, page, limit):
+        if list_type != 1:
+            return _joined_payload([], _page_info(page, limit, 0))
+        start = (page - 1) * limit
+        chunk = type1_items[start : start + limit]
+        return _joined_payload(chunk, _page_info(page, limit, len(type1_items)))
+
+    client = FakeClient(fixture_json, my_list_handler=handler)
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+
+    assert [item.activity_id for item in joined] == [
+        f"ACT-P{index:02d}" for index in range(1, 22)
+    ]
+    assert [call for call in client.my_list_calls if call["type"] == 1] == [
+        {"type": 1, "page": 1, "limit": 20},
+        {"type": 1, "page": 2, "limit": 20},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_service_joined_activities_empty_type_still_merges_others(
+    fixture_json, tmp_path
+):
+    items = {
+        1: [],
+        2: [_joined_item("ACT-E2", "类型2活动", "学术讲座")],
+        3: [_joined_item("ACT-E3", "类型3活动", "体育健身")],
+    }
+
+    def handler(list_type, page, limit):
+        rows = items.get(list_type, [])
+        return _joined_payload(rows, _page_info(page, limit, len(rows)))
+
+    client = FakeClient(fixture_json, my_list_handler=handler)
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+
+    assert [item.activity_id for item in joined] == ["ACT-E2", "ACT-E3"]
+    assert [call["type"] for call in client.my_list_calls] == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_service_joined_activities_stops_on_full_last_page_via_page_info(
+    fixture_json, tmp_path
+):
+    type1_items = [
+        _joined_item(f"ACT-F{index:02d}", f"满页活动{index}", "校园文化")
+        for index in range(1, 41)
+    ]
+
+    def handler(list_type, page, limit):
+        if list_type != 1:
+            return _joined_payload([], _page_info(page, limit, 0))
+        if page >= 3:
+            raise AssertionError(f"type=1 page={page} should not be requested")
+        start = (page - 1) * limit
+        chunk = type1_items[start : start + limit]
+        return _joined_payload(chunk, _page_info(page, limit, 40))
+
+    client = FakeClient(fixture_json, my_list_handler=handler)
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+
+    assert len(joined) == 40
+    assert len({item.activity_id for item in joined}) == 40
+    assert [item.activity_id for item in joined] == [
+        f"ACT-F{index:02d}" for index in range(1, 41)
+    ]
+    assert [call for call in client.my_list_calls if call["type"] == 1] == [
+        {"type": 1, "page": 1, "limit": 20},
+        {"type": 1, "page": 2, "limit": 20},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_service_joined_activities_full_page_without_page_info_stops(
+    fixture_json, tmp_path
+):
+    type1_items = [
+        _joined_item(f"ACT-N{index:02d}", f"无分页信息{index}", "校园文化")
+        for index in range(1, 21)
+    ]
+
+    def handler(list_type, page, limit):
+        if list_type != 1:
+            return _joined_payload([], _page_info(page, limit, 0))
+        if page >= 2:
+            raise AssertionError("full page without pageInfo should stop")
+        return _joined_payload(type1_items)
+
+    client = FakeClient(fixture_json, my_list_handler=handler)
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+
+    assert [item.activity_id for item in joined] == [
+        f"ACT-N{index:02d}" for index in range(1, 21)
+    ]
+    assert [call for call in client.my_list_calls if call["type"] == 1] == [
+        {"type": 1, "page": 1, "limit": 20},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_service_joined_activities_unparsable_page_info_stops(
+    fixture_json, tmp_path
+):
+    type1_items = [
+        _joined_item(f"ACT-G{index:02d}", f"垃圾分页{index}", "校园文化")
+        for index in range(1, 21)
+    ]
+
+    def handler(list_type, page, limit):
+        if list_type != 1:
+            return _joined_payload([], _page_info(page, limit, 0))
+        if page >= 2:
+            raise AssertionError("unparsable pageInfo should be treated as missing")
+        return _joined_payload(
+            type1_items,
+            {"page": "x", "limit": "y", "total": "lots", "totalPage": "n/a"},
+        )
+
+    client = FakeClient(fixture_json, my_list_handler=handler)
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+
+    assert len(joined) == 20
+    assert [call for call in client.my_list_calls if call["type"] == 1] == [
+        {"type": 1, "page": 1, "limit": 20},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_service_joined_activities_caps_pages_per_list_type(fixture_json, tmp_path):
+    def handler(list_type, page, limit):
+        if list_type != 1:
+            return _joined_payload([], _page_info(page, limit, 0))
+        if page > 50:
+            raise AssertionError("buggy pageInfo must not paginate past the safety cap")
+        items = [
+            _joined_item(f"ACT-C{page:02d}-{index:02d}", f"帽页{page}-{index}", "校园文化")
+            for index in range(1, limit + 1)
+        ]
+        return _joined_payload(
+            items,
+            {"page": page, "limit": limit, "total": 99999, "totalPage": 999},
+        )
+
+    client = FakeClient(fixture_json, my_list_handler=handler)
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+
+    type1_calls = [call for call in client.my_list_calls if call["type"] == 1]
+    assert len(type1_calls) == 50
+    assert type1_calls[0] == {"type": 1, "page": 1, "limit": 20}
+    assert type1_calls[-1] == {"type": 1, "page": 50, "limit": 20}
+    assert len(joined) == 50 * 20

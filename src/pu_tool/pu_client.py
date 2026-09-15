@@ -188,5 +188,6 @@ class PuClient:
     async def join_activity(self, activity_id: str) -> dict[str, Any]:
         return await self._post("/apis/activity/join", {"id": activity_id})
 
-    async def my_list(self) -> dict[str, Any]:
-        return await self._post("/apis/activity/myList", {})
+    async def my_list(self, **filters: Any) -> dict[str, Any]:
+        payload = {"type": 1, "page": 1, "limit": 20, **filters}
+        return await self._post("/apis/activity/myList", payload)
