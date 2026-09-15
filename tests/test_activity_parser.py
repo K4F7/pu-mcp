@@ -38,3 +38,9 @@ def test_parse_activity_detail_preserves_unknown_reward_fields(fixture_json):
         for item in activity.score_items
     )
     assert "unknownReward" in activity.raw
+
+
+def test_parse_activity_list_coerces_int_status_from_my_list(fixture_json):
+    activities = parse_activity_list(fixture_json("my_list_joined.json"))
+    assert activities[0].activity_id == "ACT-1009"
+    assert activities[0].status == "23"

@@ -42,6 +42,13 @@ class Activity(BaseModel):
     score_items: list[ScoreItem] = Field(default_factory=list)
     raw: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("status", "location", "organizer", mode="before")
+    @classmethod
+    def coerce_optional_str(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return str(value)
+
 
 class SignupPlan(BaseModel):
     plan_id: int | None = None
