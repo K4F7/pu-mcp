@@ -334,6 +334,11 @@ class Storage:
             return []
         return [Activity.model_validate(item) for item in json.loads(row["payload"])]
 
+    def clear_activity_caches(self) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM activity_cache")
+            conn.execute("DELETE FROM activity_list_cache")
+
     def list_cached_activities(self, max_age_seconds: float | None = None) -> list[Activity]:
         with self._connect() as conn:
             rows = conn.execute(

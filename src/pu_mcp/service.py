@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from pu_mcp.activity_parser import (
+    SIGNED_IN_FIELDS,
+    STATUS_FIELDS,
     is_list_shaped_unknown,
     parse_activity_detail,
     parse_activity_list,
@@ -52,6 +54,7 @@ class PuService:
     async def login(self, username: str, password: str, school_sid: str) -> AuthSession:
         session = await self.client.login(username, password, school_sid)
         self.session_store.save(session)
+        self.storage.clear_activity_caches()
         return session
 
     def auth_status(self) -> dict[str, object]:
@@ -70,6 +73,7 @@ class PuService:
         self.session_store.clear()
         if hasattr(self.client, "session"):
             self.client.session = None
+        self.storage.clear_activity_caches()
 
     async def search_schools(self, keyword: str, limit: int = 20) -> list[dict[str, object]]:
         needle = str(keyword or "").strip()
@@ -108,16 +112,18 @@ class PuService:
             if cache_ttl_seconds is None
             else cache_ttl_seconds
         )
-        if not refresh:
+        use_list_cache = _is_canonical_list_filters(filters)
+        if not refresh and use_list_cache:
             cached = self.storage.get_cached_activity_list(max_age_seconds=ttl)
             if cached:
-                enriched = await self._enrich_unknown_types(cached)
+                enriched = await self._enrich_activities(cached, resolve_sign_in=False)
                 if enriched != cached:
                     self.storage.cache_activity_list(enriched)
                 return self._filter_cached_activities(enriched, filters)
         activities = parse_activity_list(await self.client.activity_list(**filters))
-        activities = await self._enrich_unknown_types(activities)
-        self.storage.cache_activity_list(activities)
+        activities = await self._enrich_activities(activities, resolve_sign_in=False)
+        if use_list_cache:
+            self.storage.cache_activity_list(activities)
         return activities
 
     async def activity_detail(self, activity_id: str, *, refresh: bool = False) -> Activity:
@@ -156,7 +162,7 @@ class PuService:
                 ):
                     break
                 page += 1
-        return await self._enrich_unknown_types(merged)
+        return await self._enrich_activities(merged, resolve_sign_in=True)
 
     async def join_activity(self, activity_id: str) -> dict:
         return await self.client.join_activity(activity_id)
@@ -203,10 +209,14 @@ class PuService:
             plan, "succeeded", str(data.get("msg", "报名成功"))
         )
 
-    async def _enrich_unknown_types(self, activities: list[Activity]) -> list[Activity]:
+    async def _enrich_activities(
+        self, activities: list[Activity], *, resolve_sign_in: bool
+    ) -> list[Activity]:
         enriched: list[Activity] = []
         for activity in activities:
-            if activity.activity_type != "未知" or not activity.activity_id:
+            needs_type = activity.activity_type == "未知"
+            needs_sign = resolve_sign_in and not _sign_in_resolved(activity)
+            if (not needs_type and not needs_sign) or not activity.activity_id:
                 enriched.append(activity)
                 continue
             try:
@@ -215,7 +225,7 @@ class PuService:
                 enriched.append(activity)
                 continue
             updates: dict[str, object] = {"signed_in": detail.signed_in}
-            if detail.activity_type != "未知":
+            if needs_type and detail.activity_type != "未知":
                 updates["activity_type"] = detail.activity_type
             enriched.append(activity.model_copy(update=updates))
         return enriched
@@ -281,6 +291,48 @@ def _my_list_has_more_pages(
     total = _first_int(info, "total", "count")
     if total is not None:
         return page * limit < total
+    return False
+
+
+
+
+def _is_canonical_list_filters(filters: dict[str, object]) -> bool:
+    """List catalog cache is only for the default first page with no filters."""
+    allowed = {"page", "limit", "keyword", "activity_type"}
+    if any(key not in allowed for key in filters):
+        return False
+    try:
+        page = int(filters.get("page") or 1)
+        limit = int(filters.get("limit") or 20)
+    except (TypeError, ValueError):
+        return False
+    keyword = str(filters.get("keyword") or "").strip()
+    activity_type = str(filters.get("activity_type") or "").strip()
+    return page == 1 and limit == 20 and not keyword and not activity_type
+
+
+def _raw_has_signed_in_field(raw: object) -> bool:
+    if not isinstance(raw, dict):
+        return False
+    if any(field in raw for field in SIGNED_IN_FIELDS):
+        return True
+    for key in ("userStatus", "user_status"):
+        nested = raw.get(key)
+        if isinstance(nested, dict) and (
+            "hasSignIn" in nested or "has_sign_in" in nested
+        ):
+            return True
+    return False
+
+
+def _sign_in_resolved(activity: Activity) -> bool:
+    raw = activity.raw if isinstance(activity.raw, dict) else {}
+    if _raw_has_signed_in_field(raw):
+        return True
+    for field in STATUS_FIELDS:
+        value = raw.get(field)
+        if isinstance(value, str) and "已签到" in value:
+            return True
     return False
 
 

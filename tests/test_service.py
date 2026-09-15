@@ -1000,3 +1000,60 @@ async def test_activity_detail_skips_list_shaped_unknown_cache(fixture_json, tmp
     assert detail.signed_in is True
     assert client.activity_info_calls == 1
     assert "baseInfo" in detail.raw
+
+
+@pytest.mark.asyncio
+async def test_list_activities_skips_catalog_cache_for_noncanonical_page(
+    fixture_json, tmp_path
+):
+    client = FakeClient(fixture_json)
+    service = _make_service(client, tmp_path)
+
+    await service.list_activities(page=1, limit=20)
+    await service.list_activities(page=2, limit=20)
+
+    assert client.activity_list_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_joined_enriches_sign_in_when_type_known_but_sign_missing(
+    fixture_json, tmp_path
+):
+    payload = _joined_payload(
+        [_joined_item("1001", "已知类型缺签到字段", "社会实践")]
+    )
+    client = FakeClient(
+        fixture_json,
+        my_list_payload=payload,
+        activity_info_handler=lambda _id: _live_info(1001, "校园文化", 1, name="已知类型缺签到字段"),
+    )
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+    counts = await service.attendance_counts()
+
+    assert joined[0].activity_type == "社会实践"
+    assert joined[0].signed_in is True
+    assert client.activity_info_calls >= 1
+    assert counts["社会实践"] == 1
+    assert counts["校园文化"] == 0
+
+
+@pytest.mark.asyncio
+async def test_login_and_logout_clear_activity_caches(fixture_json, tmp_path):
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload([_live_list_item(1001, "缓存活动")]),
+        activity_info_handler=lambda _id: _live_info(1001, "校园文化", 1, name="缓存活动"),
+    )
+    service = _make_service(client, tmp_path)
+
+    await service.list_activities()
+    assert service.storage.get_cached_activity_list()
+    await service.login("demo_user", "secret", school_sid="1")
+    assert service.storage.get_cached_activity_list() == []
+
+    await service.list_activities()
+    assert service.storage.get_cached_activity_list()
+    service.logout()
+    assert service.storage.get_cached_activity_list() == []
