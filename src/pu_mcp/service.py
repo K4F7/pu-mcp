@@ -258,11 +258,13 @@ class PuService:
             needs_content = not activity.content
             needs_location = not activity.location
             needs_status = not activity.status
-            # status_code alone must not force HTTP; fill it opportunistically.
+            # status_code alone must not force HTTP; fill from TTL-aware cache only.
             needs_optional = needs_content or needs_location or needs_status
-            if not needs_type and not needs_sign and not needs_optional:
+            needs_status_code = not activity.status_code
+            if not needs_type and not needs_sign and not needs_optional and not needs_status_code:
                 return activity
 
+            ttl = self.settings.activity_cache_ttl_seconds
             detail: Activity | None = None
             if needs_type or needs_sign:
                 try:
@@ -270,8 +272,8 @@ class PuService:
                         detail = await self.activity_detail(activity.activity_id, refresh=False)
                 except PuToolError:
                     return activity
-            else:
-                cached = self.storage.get_cached_activity(activity.activity_id)
+            elif needs_optional:
+                cached = self.storage.get_cached_activity(activity.activity_id, max_age_seconds=ttl)
                 if cached is not None and not is_list_shaped_unknown(cached):
                     detail = cached
                 else:
@@ -285,6 +287,11 @@ class PuService:
                             detail = await self.activity_detail(activity.activity_id, refresh=False)
                     except PuToolError:
                         return activity
+            else:
+                cached = self.storage.get_cached_activity(activity.activity_id, max_age_seconds=ttl)
+                if cached is None or is_list_shaped_unknown(cached):
+                    return activity
+                detail = cached
             return _merge_from_detail(activity, detail, sign_resolved=sign_resolved)
 
         return list(await asyncio.gather(*[enrich_one(activity) for activity in activities]))
