@@ -15,13 +15,13 @@ Grok Bot 的 AddMcpServer **没有 cwd / 不提供 cwd**，必须用 `uv --direc
 
 无 TTY 时不要依赖密码提示。一次传齐 `-u -p --sid`（占位符），或用环境变量。不要让用户把密码贴进对话。
 
-优先 Grok Bot secret-request 或环境变量 `PU_USERNAME` / `PU_PASSWORD`（CLI typer envvar，对应 `-u` / `-p`），避免明文密码出现在 argv。`--sid` **没有** typer envvar，不会自动读 `PU_SID`；必须显式 `--sid "$PU_SID"`（由你的环境或 secret-request 提供后作为参数）。
+优先 Grok Bot secret-request 或环境变量 `PU_USERNAME` / `PU_PASSWORD` / `PU_SID`（CLI typer envvar，对应 `-u` / `-p` / `--sid`），避免明文密码出现在 argv。三个都设好后可直接 `pu login`，省略 `-u -p --sid`。显式 `--sid` 覆盖 `PU_SID`。
 
 ```bash
-uv run --python 3.12 --no-sync pu login -u "$PU_USERNAME" -p "$PU_PASSWORD" --sid "$PU_SID"
+uv run --python 3.12 --no-sync pu login
 ```
 
-若 `PU_USERNAME` / `PU_PASSWORD` 已在环境中，可省略 `-u` / `-p`，只传 `--sid "$PU_SID"`。登录成功后用 `auth_status`（MCP）或 `pu auth status` 确认（脱敏）。
+若 `PU_USERNAME` / `PU_PASSWORD` / `PU_SID` 已在环境中，可省略 `-u` / `-p` / `--sid`，直接 `pu login`。也可继续显式传 `-u -p --sid`。登录成功后用 `auth_status`（MCP）或 `pu auth status` 确认（脱敏）。
 
 ## Paste-ready：command / args / env（NO cwd）
 
