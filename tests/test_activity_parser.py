@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from pu_tool.activity_parser import parse_activity_detail, parse_activity_list
-from pu_tool.config import Settings
-from pu_tool.models import SignupPlan
+from pu_mcp.activity_parser import parse_activity_detail, parse_activity_list
+from pu_mcp.config import Settings
+from pu_mcp.models import SignupPlan
 
 
 def test_settings_defaults_are_conservative():

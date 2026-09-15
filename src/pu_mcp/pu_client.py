@@ -8,8 +8,8 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 
-from pu_tool.errors import AuthError, BusinessError, NetworkError, RateLimitError, RiskControlError
-from pu_tool.models import AuthSession
+from pu_mcp.errors import AuthError, BusinessError, NetworkError, RateLimitError, RiskControlError
+from pu_mcp.models import AuthSession
 
 RISK_WORDS = ("验证码", "captcha", "风控", "风险", "异常登录", "设备")
 SID_XOR_KEY = "sid"

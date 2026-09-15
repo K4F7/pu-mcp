@@ -1,4 +1,4 @@
-# PU Tool
+# PU MCP
 
 本项目是本地 CLI + stdio MCP，用本人 PU 账号访问口袋校园：查学校、列活动、详情、已报名、立即报名，并给出各活动类型已签到次数。登录只走 CLI；MCP 不收密码、不提供 login 工具。不保存待抢，不推荐场次，不代算有效学分。
 
@@ -102,7 +102,7 @@ Grok Bot（AddMcpServer，无 cwd）必须用 `--directory` 指向仓库绝对�
 - `PU_USERNAME`：仅 CLI `pu login` 的用户名（typer envvar，对应 `-u`）。MCP 不读。
 - `PU_PASSWORD`：仅 CLI `pu login` 的密码（typer envvar，对应 `-p`）。不要提交、不要贴进对话；MCP 不读。`--sid` 不是 envvar。
 
-token 优先保存到 OS keyring。若 keyring 不可用，会落到本地文件 `~/.pu_tool/session.json`（POSIX 权限 `0600`），并给出风险提示。本地文件安全性低于 OS keyring，请保护本机/用户账户；不要提交该文件。不保存密码（passwords never stored；只存 token/session）。
+token 优先保存到 OS keyring（服务名 `pu-mcp`）。若 keyring 不可用，会落到本地文件 `~/.pu_mcp/session.json`（POSIX 权限 `0600`），并给出风险提示。旧路径 `~/.pu_tool/session.json` 与旧 keyring 服务 `pu-tool` 在读取时会迁移到新位置。本地文件安全性低于 OS keyring，请保护本机/用户账户；不要提交该文件。不保存密码（passwords never stored；只存 token/session）。
 
 ## 测试
 

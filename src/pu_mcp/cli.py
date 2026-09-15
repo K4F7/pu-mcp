@@ -8,10 +8,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from pu_tool.errors import PuToolError, RiskControlError
-from pu_tool.models import Activity
-from pu_tool.pu_client import decode_school_sid
-from pu_tool.service import build_service
+from pu_mcp.errors import PuToolError, RiskControlError
+from pu_mcp.models import Activity
+from pu_mcp.pu_client import decode_school_sid
+from pu_mcp.service import build_service
 
 app = typer.Typer(help="PU 本地 CLI + MCP 工具，仅用于本人账号。")
 auth_app = typer.Typer(help="认证状态")
@@ -242,6 +242,6 @@ def erke() -> None:
 @app.command("mcp")
 def mcp_stdio() -> None:
     """以 stdio 启动 MCP，供 agent 访问本人 PU 账号。"""
-    from pu_tool.mcp_server import run_stdio
+    from pu_mcp.mcp_server import run_stdio
 
     run_stdio()

@@ -5,10 +5,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pu_tool.errors import BusinessError, NetworkError, RiskControlError
-from pu_tool.models import SignupPlan
-from pu_tool.scheduler import LocalSignupScheduler
-from pu_tool.storage import Storage
+from pu_mcp.errors import BusinessError, NetworkError, RiskControlError
+from pu_mcp.models import SignupPlan
+from pu_mcp.scheduler import LocalSignupScheduler
+from pu_mcp.storage import Storage
 
 
 class FakeSignupService:

@@ -6,9 +6,9 @@ from datetime import UTC, datetime
 
 from typer.testing import CliRunner
 
-from pu_tool import cli
-from pu_tool.errors import BusinessError
-from pu_tool.models import Activity, AuthSession, ScoreItem
+from pu_mcp import cli
+from pu_mcp.errors import BusinessError
+from pu_mcp.models import Activity, AuthSession, ScoreItem
 
 runner = CliRunner()
 
@@ -54,7 +54,7 @@ class MockService:
         return []
 
     def create_signup_plan(self, activity_id, activity_title, run_at, max_attempts=1):
-        from pu_tool.models import SignupPlan
+        from pu_mcp.models import SignupPlan
 
         return SignupPlan(
             plan_id=1,
@@ -68,7 +68,7 @@ class MockService:
         return []
 
     def cancel_signup_plan(self, plan_id):
-        from pu_tool.models import SignupPlan
+        from pu_mcp.models import SignupPlan
 
         return SignupPlan(
             plan_id=plan_id,

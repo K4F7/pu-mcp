@@ -6,9 +6,9 @@ from contextlib import asynccontextmanager
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
-from pu_tool.errors import PuToolError
-from pu_tool.models import Activity
-from pu_tool.service import PuService, build_service
+from pu_mcp.errors import PuToolError
+from pu_mcp.models import Activity
+from pu_mcp.service import PuService, build_service
 
 INSTRUCTIONS = (
     "登录用本机 CLI `pu login --sid …`，这里不收密码、不提供 login 工具。"

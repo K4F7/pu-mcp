@@ -4,16 +4,16 @@ from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 
-import pu_tool.web_app as web_app
-from pu_tool.errors import (
+import pu_mcp.web_app as web_app
+from pu_mcp.errors import (
     AuthError,
     BusinessError,
     NetworkError,
     RateLimitError,
     RiskControlError,
 )
-from pu_tool.models import Activity, ScoreItem, SignupPlan
-from pu_tool.web_app import create_app
+from pu_mcp.models import Activity, ScoreItem, SignupPlan
+from pu_mcp.web_app import create_app
 
 
 class MockService:
@@ -41,7 +41,7 @@ class MockService:
         return []
 
     async def login(self, username, password, school_sid):
-        from pu_tool.models import AuthSession
+        from pu_mcp.models import AuthSession
 
         self.login_call = {
             "username": username,

@@ -7,13 +7,13 @@ import pytest
 import respx
 from mcp import Client
 
-from pu_tool import mcp_server
-from pu_tool.errors import BusinessError
-from pu_tool.mcp_server import mcp
-from pu_tool.models import Activity
-from pu_tool.pu_client import PuClient
-from pu_tool.service import PuService
-from pu_tool.storage import Storage
+from pu_mcp import mcp_server
+from pu_mcp.errors import BusinessError
+from pu_mcp.mcp_server import mcp
+from pu_mcp.models import Activity
+from pu_mcp.pu_client import PuClient
+from pu_mcp.service import PuService
+from pu_mcp.storage import Storage
 
 NANCHANG_SCHOOLS = [
     {

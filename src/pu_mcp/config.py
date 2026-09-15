@@ -5,7 +5,7 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from pu_tool.mcp_launch import SESSION_FALLBACK_DIRNAME
+from pu_mcp.mcp_launch import SESSION_FALLBACK_DIRNAME
 
 
 def default_data_dir() -> Path:

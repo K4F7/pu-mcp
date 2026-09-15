@@ -7,8 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from pu_tool.mcp_server import mcp
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GROK_CONFIG = REPO_ROOT / ".grok" / "config.toml"
 GROK_BOT_DOC = REPO_ROOT / "docs" / "agents" / "grok-bot-linux-mcp.md"
@@ -18,7 +16,7 @@ _SHELL_FENCE_LANGS = {"", "bash", "sh", "shell", "zsh", "console", "powershell",
 
 
 def _mcp_launch():
-    from pu_tool.mcp_launch import (
+    from pu_mcp.mcp_launch import (
         MCP_COMMAND,
         MCP_DIRECTORY_FLAG,
         MCP_DIRECTORY_PLACEHOLDER,
@@ -90,6 +88,22 @@ def _shell_fence_languages(text: str) -> list[str]:
     return langs
 
 
+def test_launch_constants_use_renamed_package_paths():
+    launch = _mcp_launch()
+    assert launch["directory_placeholder"] == "/path/to/pu-mcp"
+    assert launch["fallback_dirname"] == ".pu_mcp"
+    assert launch["fallback_filename"] == "session.json"
+    assert launch["fallback_posix_mode"] == 0o600
+    assert launch["stdio_args"][-2:] == ["pu", "mcp"]
+
+
+def test_pyproject_package_name_is_pu_mcp():
+    parsed = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert parsed["project"]["name"] == "pu-mcp"
+    assert parsed["project"]["scripts"]["pu"] == "pu_mcp.cli:app"
+    assert parsed["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"] == ["src/pu_mcp"]
+
+
 def test_grok_config_toml_independent_repo_root_shape():
     config = _pu_mcp_config()
     args = config["args"]
@@ -120,7 +134,7 @@ def test_grok_bot_linux_mcp_doc_directory_launch_independent_shape():
     extracted = _directory_launch_args(source)
     assert "--directory" in source
     assert extracted[0] == "--directory"
-    assert extracted[1] == "/path/to/PU"
+    assert extracted[1] == "/path/to/pu-mcp"
     config_args = _pu_mcp_config()["args"]
     assert extracted[2:] == config_args
 
@@ -165,11 +179,11 @@ def test_grok_bot_linux_mcp_doc_onboarding_and_keyring_fallback():
     source = _grok_bot_doc()
     assert "clone" in source.lower() or "克隆" in source
     assert "uv sync --python 3.12 --extra dev" in source
-    assert "/path/to/PU" in source
+    assert "/path/to/pu-mcp" in source
     assert "pu login --sid" in source
     assert "AddMcpServer" in source
-    assert "~/.pu_tool/session.json" in source or (
-        ".pu_tool" in source and "session.json" in source
+    assert "~/.pu_mcp/session.json" in source or (
+        ".pu_mcp" in source and "session.json" in source
     )
     assert "0600" in source or "0o600" in source
     assert re.search(r"(less secure|更不安全|安全性低于|不如)", source, re.I)
@@ -212,8 +226,8 @@ def test_readme_links_grok_bot_linux_mcp_doc():
 
 def test_readme_documents_keyring_fallback_risk():
     source = _readme()
-    assert "~/.pu_tool/session.json" in source or (
-        ".pu_tool" in source and "session.json" in source
+    assert "~/.pu_mcp/session.json" in source or (
+        ".pu_mcp" in source and "session.json" in source
     )
     assert "0600" in source or "0o600" in source
     assert re.search(r"(less secure|更不安全|安全性低于|不如)", source, re.I)
@@ -241,6 +255,7 @@ def test_readme_keyring_fallback_matches_launch_constants():
 
 @pytest.mark.asyncio
 async def test_mcp_tools_unchanged_and_still_no_login():
+    from pu_mcp.mcp_server import mcp
     from test_mcp import EXPECTED_MCP_TOOLS, FORBIDDEN_MCP_TOOLS
 
     tools = await mcp.list_tools()

@@ -10,11 +10,17 @@ from pathlib import Path
 import keyring
 from pydantic import TypeAdapter
 
-from pu_tool.config import default_data_dir
-from pu_tool.mcp_launch import SESSION_FALLBACK_FILENAME, SESSION_FALLBACK_POSIX_MODE
-from pu_tool.models import AuthSession
+from pu_mcp.config import default_data_dir
+from pu_mcp.mcp_launch import (
+    LEGACY_SESSION_FALLBACK_DIRNAME,
+    SESSION_FALLBACK_FILENAME,
+    SESSION_FALLBACK_POSIX_MODE,
+)
+from pu_mcp.models import AuthSession
 
-SERVICE_NAME = "pu-tool"
+SERVICE_NAME = "pu-mcp"
+LEGACY_SERVICE_NAME = "pu-tool"
+_KEYRING_KEYS = ("token", "sid", "metadata")
 
 
 def mask_secret(value: str | None) -> str:
@@ -40,19 +46,30 @@ class FileSessionStore(SessionStore):
     def __init__(self, path: Path | None = None):
         self.path = path or default_data_dir() / SESSION_FALLBACK_FILENAME
 
+    def _legacy_path(self) -> Path:
+        return Path.home() / LEGACY_SESSION_FALLBACK_DIRNAME / SESSION_FALLBACK_FILENAME
+
     def save(self, session: AuthSession) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(session.model_dump_json(), encoding="utf-8")
         self._restrict_permissions()
 
     def load(self) -> AuthSession | None:
-        if not self.path.exists():
+        if self.path.exists():
+            return self._read(self.path)
+        legacy = self._legacy_path()
+        if not legacy.exists():
             return None
-        return TypeAdapter(AuthSession).validate_json(self.path.read_text(encoding="utf-8"))
+        session = self._read(legacy)
+        self.save(session)
+        return session
 
     def clear(self) -> None:
-        if self.path.exists():
-            self.path.unlink()
+        self.path.unlink(missing_ok=True)
+        self._legacy_path().unlink(missing_ok=True)
+
+    def _read(self, path: Path) -> AuthSession:
+        return TypeAdapter(AuthSession).validate_json(path.read_text(encoding="utf-8"))
 
     def _restrict_permissions(self) -> None:
         if os.name == "posix":
@@ -101,21 +118,32 @@ class KeyringSessionStore(SessionStore):
 
     def load(self) -> AuthSession | None:
         try:
-            token = keyring.get_password(SERVICE_NAME, "token")
-            sid = keyring.get_password(SERVICE_NAME, "sid")
-            metadata = keyring.get_password(SERVICE_NAME, "metadata")
-            if token and sid:
-                values = json.loads(metadata or "{}")
-                values.update({"token": token, "sid": sid})
-                return AuthSession.model_validate(values)
+            session = self._load_from_service(SERVICE_NAME)
+            if session is not None:
+                return session
+            session = self._load_from_service(LEGACY_SERVICE_NAME)
+            if session is not None:
+                self.save(session)
+                return session
         except Exception:
             return self.fallback.load()
         return self.fallback.load()
 
     def clear(self) -> None:
-        for key in ("token", "sid", "metadata"):
-            try:
-                keyring.delete_password(SERVICE_NAME, key)
-            except Exception:
-                pass
+        for service in (SERVICE_NAME, LEGACY_SERVICE_NAME):
+            for key in _KEYRING_KEYS:
+                try:
+                    keyring.delete_password(service, key)
+                except Exception:
+                    pass
         self.fallback.clear()
+
+    def _load_from_service(self, service: str) -> AuthSession | None:
+        token = keyring.get_password(service, "token")
+        sid = keyring.get_password(service, "sid")
+        metadata = keyring.get_password(service, "metadata")
+        if not (token and sid):
+            return None
+        values = json.loads(metadata or "{}")
+        values.update({"token": token, "sid": sid})
+        return AuthSession.model_validate(values)

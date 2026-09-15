@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pu_tool.activity_parser import parse_activity_detail, parse_activity_list
-from pu_tool.config import Settings
-from pu_tool.models import Activity, AuthSession, SignupAttempt, SignupPlan
-from pu_tool.pu_client import PuClient
-from pu_tool.security import KeyringSessionStore, SessionStore, mask_secret
-from pu_tool.storage import Storage
-from pu_tool.time_utils import ensure_aware_local
+from pu_mcp.activity_parser import parse_activity_detail, parse_activity_list
+from pu_mcp.config import Settings
+from pu_mcp.models import Activity, AuthSession, SignupAttempt, SignupPlan
+from pu_mcp.pu_client import PuClient
+from pu_mcp.security import KeyringSessionStore, SessionStore, mask_secret
+from pu_mcp.storage import Storage
+from pu_mcp.time_utils import ensure_aware_local
 
 COUNTABLE_ACTIVITY_TYPES = (
     "社会实践",

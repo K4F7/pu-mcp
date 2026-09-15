@@ -7,9 +7,9 @@ import httpx
 import pytest
 import respx
 
-from pu_tool.errors import BusinessError, NetworkError, RiskControlError
-from pu_tool.models import AuthSession
-from pu_tool.pu_client import PuClient, decode_school_sid
+from pu_mcp.errors import BusinessError, NetworkError, RiskControlError
+from pu_mcp.models import AuthSession
+from pu_mcp.pu_client import PuClient, decode_school_sid
 
 
 def test_decode_school_sid_from_class_url_hash():
