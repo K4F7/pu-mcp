@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from pu_mcp.activity_parser import parse_activity
 from pu_mcp.errors import BusinessError
 from pu_mcp.models import AuthSession
 from pu_mcp.service import PuService
@@ -25,16 +26,26 @@ class MemorySessionStore:
 
 
 class FakeClient:
-    def __init__(self, fixture_json, my_list_payload=None, my_list_handler=None):
+    def __init__(
+        self,
+        fixture_json,
+        my_list_payload=None,
+        my_list_handler=None,
+        activity_list_payload=None,
+        activity_info_handler=None,
+    ):
         self.fixture_json = fixture_json
         self.my_list_payload = my_list_payload
         self.my_list_handler = my_list_handler
+        self.activity_list_payload = activity_list_payload
+        self.activity_info_handler = activity_info_handler
         self.my_list_calls = []
         self.join_calls = 0
         self.joined_activity_ids = []
         self.activity_list_calls = 0
         self.activity_list_filters = []
         self.activity_info_calls = 0
+        self.activity_info_ids = []
 
     async def login(self, username, password, school_sid):
         self.login_call = {
@@ -49,10 +60,15 @@ class FakeClient:
     async def activity_list(self, **filters):
         self.activity_list_calls += 1
         self.activity_list_filters.append(filters)
+        if self.activity_list_payload is not None:
+            return self.activity_list_payload
         return self.fixture_json("activity_list.json")
 
     async def activity_info(self, activity_id):
         self.activity_info_calls += 1
+        self.activity_info_ids.append(activity_id)
+        if self.activity_info_handler is not None:
+            return self.activity_info_handler(activity_id)
         return self.fixture_json("activity_info_credit.json")
 
     async def my_list(self, **filters):
@@ -648,3 +664,396 @@ async def test_service_joined_activities_caps_pages_per_list_type(fixture_json, 
     assert type1_calls[0] == {"type": 1, "page": 1, "limit": 20}
     assert type1_calls[-1] == {"type": 1, "page": 50, "limit": 20}
     assert len(joined) == 50 * 20
+
+
+def _live_list_item(activity_id: object, name: str, **fields: object) -> dict:
+    return {"id": activity_id, "name": name, "puType": 0, **fields}
+
+
+def _live_info(
+    activity_id: object,
+    category_name: str | None,
+    has_sign_in: int,
+    name: str = "合成活动",
+) -> dict:
+    base_info: dict[str, object] = {"name": name}
+    if category_name is not None:
+        base_info["categoryName"] = category_name
+    return {
+        "code": 0,
+        "msg": "ok",
+        "data": {
+            "id": activity_id,
+            "puType": 0,
+            "baseInfo": base_info,
+            "userStatus": {"hasSignIn": has_sign_in, "hasJoin": 1},
+        },
+    }
+
+
+def _live_info_by_id(details: dict[str, dict]) -> object:
+    def handler(activity_id):
+        return details[str(activity_id)]
+
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_list_activities_enriches_unknown_type_from_info(fixture_json, tmp_path):
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload(
+            [_live_list_item(1001, "校园文化合成活动")]
+        ),
+        activity_info_handler=lambda _id: _live_info(
+            1001, "校园文化", 1, name="校园文化合成活动"
+        ),
+    )
+    service = _make_service(client, tmp_path)
+
+    activities = await service.list_activities()
+
+    assert activities[0].activity_id == "1001"
+    assert activities[0].activity_type == "校园文化"
+    assert activities[0].signed_in is True
+    assert client.activity_info_ids == ["1001"]
+
+
+@pytest.mark.asyncio
+async def test_joined_activities_enriches_unknown_type_from_info(fixture_json, tmp_path):
+    client = FakeClient(
+        fixture_json,
+        my_list_payload=_joined_payload([_live_list_item(1001, "思想引领合成活动")]),
+        activity_info_handler=lambda _id: _live_info(
+            1001, "思想引领", 1, name="思想引领合成活动"
+        ),
+    )
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+
+    assert joined[0].activity_id == "1001"
+    assert joined[0].activity_type == "思想引领"
+    assert joined[0].signed_in is True
+    assert client.activity_info_ids == ["1001"]
+
+
+@pytest.mark.asyncio
+async def test_list_activities_does_not_overwrite_known_type_via_enrichment(
+    fixture_json, tmp_path
+):
+    client = FakeClient(
+        fixture_json,
+        activity_info_handler=lambda _id: _live_info(1001, "校园文化", 1),
+    )
+    service = _make_service(client, tmp_path)
+
+    activities = await service.list_activities()
+
+    assert activities[0].activity_type == "志愿公益"
+    assert client.activity_info_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_joined_activities_does_not_overwrite_known_type_via_enrichment(
+    fixture_json, tmp_path
+):
+    payload = _joined_payload(
+        [_joined_item("ACT-2001", "已知类型活动", "志愿公益", signedIn=True)]
+    )
+    client = FakeClient(
+        fixture_json,
+        my_list_payload=payload,
+        activity_info_handler=lambda _id: _live_info("ACT-2001", "校园文化", 0),
+    )
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+
+    assert joined[0].activity_type == "志愿公益"
+    assert joined[0].signed_in is True
+    assert client.activity_info_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_enrichment_keeps_unknown_when_info_lacks_type(fixture_json, tmp_path):
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload([_live_list_item(1002, "未分类活动")]),
+        my_list_payload=_joined_payload([_live_list_item(1002, "未分类活动")]),
+        activity_info_handler=lambda _id: _live_info(1002, None, 1, name="未分类活动"),
+    )
+    service = _make_service(client, tmp_path)
+
+    listed = await service.list_activities()
+    joined = await service.joined_activities()
+
+    assert listed[0].activity_type == "未知"
+    assert joined[0].activity_type == "未知"
+    assert listed[0].signed_in is True
+    assert joined[0].signed_in is True
+
+
+@pytest.mark.asyncio
+async def test_list_activities_enrichment_survives_info_failure(fixture_json, tmp_path):
+    class FailingInfoClient(FakeClient):
+        async def activity_info(self, activity_id):
+            self.activity_info_calls += 1
+            self.activity_info_ids.append(activity_id)
+            raise BusinessError('type mismatch for field "id"')
+
+    client = FailingInfoClient(
+        fixture_json,
+        activity_list_payload=_joined_payload([_live_list_item(1001, "校园文化合成活动")]),
+    )
+    service = _make_service(client, tmp_path)
+
+    activities = await service.list_activities()
+
+    assert activities[0].activity_type == "未知"
+    assert activities[0].signed_in is False
+    assert client.activity_info_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_attendance_counts_from_live_my_list_via_info_enrichment(
+    fixture_json, tmp_path
+):
+    items = [
+        _live_list_item(1, "实践已签"),
+        _live_list_item(2, "实践未签"),
+        _live_list_item(3, "文化已签"),
+        _live_list_item(4, "讲座已签"),
+        _live_list_item(5, "志愿已签"),
+        _live_list_item(6, "双创已签"),
+        _live_list_item(7, "公益已签"),
+        _live_list_item(8, "未知已签"),
+    ]
+    details = {
+        "1": _live_info(1, "社会实践", 1, name="实践已签"),
+        "2": _live_info(2, "社会实践", 0, name="实践未签"),
+        "3": _live_info(3, "校园文化", 1, name="文化已签"),
+        "4": _live_info(4, "学术讲座", 1, name="讲座已签"),
+        "5": _live_info(5, "志愿服务", 1, name="志愿已签"),
+        "6": _live_info(6, "创新创业", 1, name="双创已签"),
+        "7": _live_info(7, "志愿公益", 1, name="公益已签"),
+        "8": _live_info(8, None, 1, name="未知已签"),
+    }
+    client = FakeClient(
+        fixture_json,
+        my_list_payload=_joined_payload(items),
+        activity_info_handler=_live_info_by_id(details),
+    )
+    service = _make_service(client, tmp_path)
+
+    counts = await service.attendance_counts()
+
+    assert counts == {
+        "社会实践": 1,
+        "校园文化": 1,
+        "思想引领": 0,
+        "学科竞赛": 0,
+        "学术讲座": 1,
+        "体育健身": 0,
+    }
+    assert "志愿服务" not in counts
+    assert "创新创业" not in counts
+    assert "志愿公益" not in counts
+    assert "未知" not in counts
+
+
+@pytest.mark.asyncio
+async def test_list_activities_not_poisoned_by_joined_detail_cache(fixture_json, tmp_path):
+    catalog = [
+        _live_list_item(2001, "目录活动甲"),
+        _live_list_item(2002, "目录活动乙"),
+    ]
+    details = {
+        "1001": _live_info(1001, "思想引领", 1, name="已报名活动"),
+        "2001": _live_info(2001, "校园文化", 0, name="目录活动甲"),
+        "2002": _live_info(2002, "学术讲座", 0, name="目录活动乙"),
+    }
+    client = FakeClient(
+        fixture_json,
+        my_list_payload=_joined_payload([_live_list_item(1001, "已报名活动")]),
+        activity_list_payload=_joined_payload(catalog),
+        activity_info_handler=_live_info_by_id(details),
+    )
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+    listed = await service.list_activities(refresh=False)
+
+    assert [item.activity_id for item in joined] == ["1001"]
+    assert [item.activity_id for item in listed] == ["2001", "2002"]
+    assert client.activity_list_calls == 1
+    cached_detail = await service.activity_detail("1001", refresh=False)
+    assert cached_detail.activity_type == "思想引领"
+    assert "baseInfo" in cached_detail.raw
+
+
+@pytest.mark.asyncio
+async def test_cached_list_shaped_unknown_later_fetches_info(fixture_json, tmp_path):
+    fail_info = {"value": True}
+
+    def handler(_activity_id):
+        if fail_info["value"]:
+            raise BusinessError("info unavailable")
+        return _live_info(1001, "校园文化", 1, name="校园文化合成活动")
+
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload([_live_list_item(1001, "校园文化合成活动")]),
+        activity_info_handler=handler,
+    )
+    service = _make_service(client, tmp_path)
+
+    first = await service.list_activities()
+    assert first[0].activity_type == "未知"
+    assert first[0].signed_in is False
+    assert client.activity_info_calls == 1
+    assert client.activity_list_calls == 1
+
+    fail_info["value"] = False
+    second = await service.list_activities()
+    assert second[0].activity_type == "校园文化"
+    assert second[0].signed_in is True
+    assert client.activity_info_calls == 2
+    assert client.activity_list_calls == 1
+
+    third = await service.list_activities()
+    assert third[0].activity_type == "校园文化"
+    assert third[0].signed_in is True
+    assert client.activity_info_calls == 2
+    assert client.activity_list_calls == 1
+
+    cached = service.storage.get_cached_activity("1001")
+    assert cached is not None
+    assert cached.activity_type == "校园文化"
+    assert "baseInfo" in cached.raw
+
+
+@pytest.mark.asyncio
+async def test_list_activities_refresh_retries_info_for_list_shaped_unknown(
+    fixture_json, tmp_path
+):
+    fail_info = {"value": True}
+
+    def handler(_activity_id):
+        if fail_info["value"]:
+            raise BusinessError("info unavailable")
+        return _live_info(1001, "思想引领", 1, name="思想引领合成活动")
+
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload([_live_list_item(1001, "思想引领合成活动")]),
+        activity_info_handler=handler,
+    )
+    service = _make_service(client, tmp_path)
+
+    first = await service.list_activities()
+    assert first[0].activity_type == "未知"
+    assert client.activity_info_calls == 1
+
+    fail_info["value"] = False
+    refreshed = await service.list_activities(refresh=True)
+    assert refreshed[0].activity_type == "思想引领"
+    assert refreshed[0].signed_in is True
+    assert client.activity_info_calls == 2
+    assert client.activity_list_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_detail_shaped_unknown_does_not_refetch_info(fixture_json, tmp_path):
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload([_live_list_item(1002, "未分类活动")]),
+        activity_info_handler=lambda _id: _live_info(1002, None, 1, name="未分类活动"),
+    )
+    service = _make_service(client, tmp_path)
+
+    first = await service.list_activities()
+    second = await service.list_activities()
+
+    assert first[0].activity_type == "未知"
+    assert first[0].signed_in is True
+    assert second[0].activity_type == "未知"
+    assert second[0].signed_in is True
+    assert client.activity_info_calls == 1
+    assert "baseInfo" in (service.storage.get_cached_activity("1002") or first[0]).raw
+
+
+@pytest.mark.asyncio
+async def test_activity_detail_skips_list_shaped_unknown_cache(fixture_json, tmp_path):
+    client = FakeClient(
+        fixture_json,
+        activity_info_handler=lambda _id: _live_info(
+            1001, "校园文化", 1, name="校园文化合成活动"
+        ),
+    )
+    service = _make_service(client, tmp_path)
+    service.storage.cache_activity(parse_activity(_live_list_item(1001, "校园文化合成活动")))
+
+    detail = await service.activity_detail("1001", refresh=False)
+
+    assert detail.activity_type == "校园文化"
+    assert detail.signed_in is True
+    assert client.activity_info_calls == 1
+    assert "baseInfo" in detail.raw
+
+
+@pytest.mark.asyncio
+async def test_list_activities_skips_catalog_cache_for_noncanonical_page(
+    fixture_json, tmp_path
+):
+    client = FakeClient(fixture_json)
+    service = _make_service(client, tmp_path)
+
+    await service.list_activities(page=1, limit=20)
+    await service.list_activities(page=2, limit=20)
+
+    assert client.activity_list_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_joined_enriches_sign_in_when_type_known_but_sign_missing(
+    fixture_json, tmp_path
+):
+    payload = _joined_payload(
+        [_joined_item("1001", "已知类型缺签到字段", "社会实践")]
+    )
+    client = FakeClient(
+        fixture_json,
+        my_list_payload=payload,
+        activity_info_handler=lambda _id: _live_info(1001, "校园文化", 1, name="已知类型缺签到字段"),
+    )
+    service = _make_service(client, tmp_path)
+
+    joined = await service.joined_activities()
+    counts = await service.attendance_counts()
+
+    assert joined[0].activity_type == "社会实践"
+    assert joined[0].signed_in is True
+    assert client.activity_info_calls >= 1
+    assert counts["社会实践"] == 1
+    assert counts["校园文化"] == 0
+
+
+@pytest.mark.asyncio
+async def test_login_and_logout_clear_activity_caches(fixture_json, tmp_path):
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload([_live_list_item(1001, "缓存活动")]),
+        activity_info_handler=lambda _id: _live_info(1001, "校园文化", 1, name="缓存活动"),
+    )
+    service = _make_service(client, tmp_path)
+
+    await service.list_activities()
+    assert service.storage.get_cached_activity_list()
+    await service.login("demo_user", "secret", school_sid="1")
+    assert service.storage.get_cached_activity_list() == []
+
+    await service.list_activities()
+    assert service.storage.get_cached_activity_list()
+    service.logout()
+    assert service.storage.get_cached_activity_list() == []

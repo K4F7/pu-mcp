@@ -6,7 +6,15 @@ from typing import Any
 from pu_mcp.errors import ParseError
 from pu_mcp.models import Activity, ScoreItem
 
-TYPE_FIELDS = ("typeName", "type_name", "category", "activityType", "activity_type")
+TYPE_FIELDS = (
+    "categoryName",
+    "category_name",
+    "typeName",
+    "type_name",
+    "category",
+    "activityType",
+    "activity_type",
+)
 ID_FIELDS = ("id", "activityId", "activity_id")
 TITLE_FIELDS = ("title", "name", "activityName")
 START_FIELDS = ("startTime", "start_time", "beginTime")
@@ -23,6 +31,8 @@ SIGNED_IN_FIELDS = (
     "is_sign",
     "hasSign",
     "has_sign",
+    "hasSignIn",
+    "has_sign_in",
     "signStatus",
     "sign_status",
     "signIn",
@@ -56,6 +66,28 @@ def _first(raw: dict[str, Any], fields: tuple[str, ...], default: Any = None) ->
         if value not in (None, ""):
             return value
     return default
+
+
+def _flatten_nested_activity_fields(raw: dict[str, Any]) -> dict[str, Any]:
+    flattened = dict(raw)
+    for key in ("baseInfo", "base_info"):
+        nested = raw.get(key)
+        if isinstance(nested, dict):
+            flattened.update(nested)
+            break
+    for key in ("userStatus", "user_status"):
+        nested = raw.get(key)
+        if isinstance(nested, dict):
+            flattened.update(nested)
+            break
+    outer_id = raw.get("id")
+    if outer_id not in (None, ""):
+        flattened["id"] = outer_id
+    return flattened
+
+
+def _is_signed_in_int(value: Any, expected: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value == expected
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -112,11 +144,11 @@ def _parse_signed_in(raw: dict[str, Any]) -> bool:
         if field not in raw:
             continue
         value = raw[field]
-        if value in SIGNED_IN_TRUE:
+        if _is_signed_in_int(value, 1) or value is True or value in SIGNED_IN_TRUE:
             return True
         if isinstance(value, str) and "已签到" in value:
             return True
-        if value in SIGNED_IN_FALSE:
+        if _is_signed_in_int(value, 0) or value is False or value in SIGNED_IN_FALSE:
             return False
     for field in STATUS_FIELDS:
         value = raw.get(field)
@@ -125,13 +157,35 @@ def _parse_signed_in(raw: dict[str, Any]) -> bool:
     return False
 
 
+_DETAIL_NESTED_KEYS = ("baseInfo", "base_info", "userStatus", "user_status")
+_DETAIL_TYPE_KEYS = ("categoryName", "category_name")
+
+
+def is_detail_shaped(activity: Activity) -> bool:
+    raw = activity.raw if isinstance(activity.raw, dict) else {}
+    for key in _DETAIL_NESTED_KEYS:
+        nested = raw.get(key)
+        if isinstance(nested, dict) and nested:
+            return True
+    for key in _DETAIL_TYPE_KEYS:
+        if raw.get(key) not in (None, ""):
+            return True
+    return False
+
+
+def is_list_shaped_unknown(activity: Activity) -> bool:
+    return activity.activity_type == "未知" and not is_detail_shaped(activity)
+
+
 def parse_activity(raw: dict[str, Any]) -> Activity:
+    raw = _flatten_nested_activity_fields(raw)
     activity_id = _first(raw, ID_FIELDS)
     title = _first(raw, TITLE_FIELDS)
     if not activity_id or not title:
         raise ParseError("activity is missing id or title")
     score_items = _score_items(raw)
     credits = " / ".join(f"{item.label}:{item.value}{item.unit}" for item in score_items) or None
+    # list/myList lack type names; detail has categoryName after flattening baseInfo.
     return Activity(
         activity_id=str(activity_id),
         title=str(title),

@@ -183,7 +183,10 @@ class PuClient:
         return await self._post("/apis/activity/list", payload)
 
     async def activity_info(self, activity_id: str) -> dict[str, Any]:
-        return await self._post("/apis/activity/info", {"id": activity_id})
+        payload_id: str | int = activity_id
+        if isinstance(activity_id, str) and activity_id.isdigit():
+            payload_id = int(activity_id)
+        return await self._post("/apis/activity/info", {"id": payload_id})
 
     async def join_activity(self, activity_id: str) -> dict[str, Any]:
         return await self._post("/apis/activity/join", {"id": activity_id})

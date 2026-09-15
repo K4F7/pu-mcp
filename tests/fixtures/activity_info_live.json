@@ -1,0 +1,17 @@
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "id": 1001,
+    "puType": 0,
+    "baseInfo": {
+      "name": "校园文化合成活动",
+      "categoryName": "校园文化",
+      "categoryId": 1
+    },
+    "userStatus": {
+      "hasSignIn": 1,
+      "hasJoin": 1
+    }
+  }
+}
