@@ -8,8 +8,20 @@ Grok Bot 的 AddMcpServer **没有 cwd / 不提供 cwd**，必须用 `uv --direc
 2. 克隆本仓库（clone）。
 3. 在仓库根执行：`uv sync --python 3.12 --extra dev`。
 4. 把下面 `/path/to/PU` 换成仓库的真实绝对路径。
-5. 本机登录一次（首选，不依赖全局 `pu`）：`uv run --python 3.12 --no-sync pu login --sid …`。仅当已激活 `.venv` 或 PATH 里已有 `pu` 时，才可用裸命令 `pu login --sid …`。
-6. 把下面 command / args / env 贴进 AddMcpServer。不要填 cwd。
+5. 登录只走 CLI；MCP 不收密码、不提供 login 工具。交互式本机登录一次（首选，不依赖全局 `pu`）：`uv run --python 3.12 --no-sync pu login --sid …`。仅当已激活 `.venv` 或 PATH 里已有 `pu` 时，才可用裸命令 `pu login --sid …`。无 TTY / Grok Bot 见下方非交互示例。
+6. 把下面 command / args / env 贴进 AddMcpServer。不要填 cwd。AddMcpServer 的 env 是给 MCP 进程继承 HOME/PATH 用的，不要把 `PU_PASSWORD` 填进 MCP env。
+
+## 非交互登录（Grok Bot / agent）
+
+无 TTY 时不要依赖密码提示。一次传齐 `-u -p --sid`（占位符），或用环境变量。不要让用户把密码贴进对话。
+
+优先 Grok Bot secret-request 或环境变量 `PU_USERNAME` / `PU_PASSWORD`（CLI typer envvar，对应 `-u` / `-p`），避免明文密码出现在 argv。`--sid` **没有** typer envvar，不会自动读 `PU_SID`；必须显式 `--sid "$PU_SID"`（由你的环境或 secret-request 提供后作为参数）。
+
+```bash
+uv run --python 3.12 --no-sync pu login -u "$PU_USERNAME" -p "$PU_PASSWORD" --sid "$PU_SID"
+```
+
+若 `PU_USERNAME` / `PU_PASSWORD` 已在环境中，可省略 `-u` / `-p`，只传 `--sid "$PU_SID"`。登录成功后用 `auth_status`（MCP）或 `pu auth status` 确认（脱敏）。
 
 ## Paste-ready：command / args / env（NO cwd）
 
