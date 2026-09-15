@@ -236,6 +236,34 @@ async def test_business_failed_join_is_not_retried(fixture_json):
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_activity_info_coerces_numeric_string_id_to_int():
+    route = respx.post("https://mock.local/apis/activity/info").mock(
+        return_value=httpx.Response(200, json={"code": 0, "data": {}})
+    )
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    async with PuClient(
+        base_url="https://mock.local", session=session, min_interval_seconds=0
+    ) as client:
+        await client.activity_info("1001")
+    assert route.calls[0].request.content == b'{"id":1001}'
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_activity_info_keeps_non_numeric_id_as_string():
+    route = respx.post("https://mock.local/apis/activity/info").mock(
+        return_value=httpx.Response(200, json={"code": 0, "data": {}})
+    )
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    async with PuClient(
+        base_url="https://mock.local", session=session, min_interval_seconds=0
+    ) as client:
+        await client.activity_info("ACT-1001")
+    assert route.calls[0].request.content == b'{"id":"ACT-1001"}'
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_transient_network_errors_are_bounded():
     route = respx.post("https://mock.local/apis/activity/info").mock(
         side_effect=httpx.ConnectError("temporary")

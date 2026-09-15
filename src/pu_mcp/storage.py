@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from pu_mcp.activity_parser import is_detail_shaped
 from pu_mcp.models import Activity, SignupAttempt, SignupPlan
+
+_ACTIVITY_LIST_CACHE_KEY = "catalog"
 
 
 class DuplicatePlanError(ValueError):
@@ -65,6 +69,11 @@ class Storage:
                 );
                 CREATE TABLE IF NOT EXISTS activity_cache (
                     activity_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS activity_list_cache (
+                    cache_key TEXT PRIMARY KEY,
                     payload TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -266,6 +275,13 @@ class Storage:
         return [self._row_to_attempt(row) for row in rows]
 
     def cache_activity(self, activity: Activity) -> None:
+        existing = self.get_cached_activity(activity.activity_id)
+        if (
+            existing is not None
+            and is_detail_shaped(existing)
+            and not is_detail_shaped(activity)
+        ):
+            return
         with self._connect() as conn:
             conn.execute(
                 """
@@ -289,6 +305,34 @@ class Storage:
         if row is None or self._is_cache_stale(_dt(row["updated_at"]), max_age_seconds):
             return None
         return Activity.model_validate_json(row["payload"])
+
+    def cache_activity_list(self, activities: list[Activity]) -> None:
+        payload = json.dumps(
+            [json.loads(activity.model_dump_json()) for activity in activities]
+        )
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO activity_list_cache(cache_key, payload, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(cache_key) DO UPDATE SET
+                    payload=excluded.payload,
+                    updated_at=excluded.updated_at
+                """,
+                (_ACTIVITY_LIST_CACHE_KEY, payload, _iso(datetime.now(UTC))),
+            )
+
+    def get_cached_activity_list(
+        self, max_age_seconds: float | None = None
+    ) -> list[Activity]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT payload, updated_at FROM activity_list_cache WHERE cache_key = ?",
+                (_ACTIVITY_LIST_CACHE_KEY,),
+            ).fetchone()
+        if row is None or self._is_cache_stale(_dt(row["updated_at"]), max_age_seconds):
+            return []
+        return [Activity.model_validate(item) for item in json.loads(row["payload"])]
 
     def list_cached_activities(self, max_age_seconds: float | None = None) -> list[Activity]:
         with self._connect() as conn:
