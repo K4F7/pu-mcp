@@ -304,6 +304,69 @@ def test_cli_login_uses_numeric_school_sid_without_printing_password(monkeypatch
     assert "fake-password" not in result.output
 
 
+def test_cli_login_short_flags_succeed_with_empty_stdin(monkeypatch):
+    captured = {}
+
+    class CapturingService(MockService):
+        async def login(self, username, password, school_sid):
+            captured["username"] = username
+            captured["password"] = password
+            captured["school_sid"] = school_sid
+            return AuthSession(
+                token="test-token-abcdef123456",
+                sid="auth-sid-from-response",
+                masked_user=username,
+            )
+
+    monkeypatch.setattr(cli, "build_service", lambda: CapturingService())
+
+    result = runner.invoke(
+        cli.app,
+        ["login", "-u", "fake-user", "-p", "fake-password", "--sid", "237791864815616"],
+        input="",
+    )
+
+    assert result.exit_code == 0
+    assert captured == {
+        "username": "fake-user",
+        "password": "fake-password",
+        "school_sid": "237791864815616",
+    }
+    assert "fake-password" not in result.output
+
+
+def test_cli_login_reads_password_from_pu_password_env(monkeypatch):
+    captured = {}
+
+    class CapturingService(MockService):
+        async def login(self, username, password, school_sid):
+            captured["username"] = username
+            captured["password"] = password
+            captured["school_sid"] = school_sid
+            return AuthSession(
+                token="test-token-abcdef123456",
+                sid="auth-sid-from-response",
+                masked_user=username,
+            )
+
+    monkeypatch.setattr(cli, "build_service", lambda: CapturingService())
+    monkeypatch.setenv("PU_PASSWORD", "fake-password")
+
+    result = runner.invoke(
+        cli.app,
+        ["login", "-u", "fake-user", "--sid", "237791864815616"],
+        input="",
+    )
+
+    assert result.exit_code == 0
+    assert captured == {
+        "username": "fake-user",
+        "password": "fake-password",
+        "school_sid": "237791864815616",
+    }
+    assert "fake-password" not in result.output
+
+
 def test_cli_login_decodes_encoded_sid_from_class_url_without_printing_password(monkeypatch):
     captured = {}
 

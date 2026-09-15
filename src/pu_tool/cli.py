@@ -51,8 +51,11 @@ def main() -> None:
 
 @app.command()
 def login(
-    username: Annotated[str, typer.Option("--username", "-u", prompt=True)],
-    password: Annotated[str, typer.Option("--password", "-p", prompt=True, hide_input=True)],
+    username: Annotated[str, typer.Option("--username", "-u", prompt=True, envvar="PU_USERNAME")],
+    password: Annotated[
+        str,
+        typer.Option("--password", "-p", prompt=True, hide_input=True, envvar="PU_PASSWORD"),
+    ],
     sid: Annotated[str | None, typer.Option("--sid")] = None,
     encoded_sid: Annotated[str | None, typer.Option("--encoded-sid")] = None,
 ) -> None:
