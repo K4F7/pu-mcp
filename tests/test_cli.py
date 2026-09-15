@@ -181,9 +181,17 @@ def test_cli_activity_list_displays_type_and_scores(monkeypatch):
     monkeypatch.setattr(cli, "build_service", lambda: MockService())
     result = runner.invoke(cli.app, ["activities", "list"])
     assert result.exit_code == 0
-    assert "志愿公益" in result.output
-    assert "加分:2分" in result.output
-    assert "进行中" in result.output
+    plain = _plain(result.output)
+    assert "志愿公益" in plain
+    assert "进行中" in plain
+    assert "虚构活动室 A" in plain
+    assert "合成活动说明" in plain  # human table may ellipsize long content
+    json_result = runner.invoke(cli.app, ["activities", "list", "--json"])
+    assert json_result.exit_code == 0
+    payload = json.loads(_plain(json_result.output))
+    assert payload[0]["content"] == "合成活动说明正文"
+    assert payload[0]["location"] == "虚构活动室 A"
+    assert payload[0]["score_items"]
 
 
 def test_cli_json_output(monkeypatch):
@@ -472,6 +480,8 @@ def test_cli_activities_joined_marks_signed_in(monkeypatch):
                     activity_id="ACT-2001",
                     title="校园文化讲座",
                     activity_type="校园文化",
+                    location="虚构报告厅",
+                    content="讲座正文预览",
                     status="进行中",
                     status_code="5",
                     signed_in=True,
@@ -480,6 +490,8 @@ def test_cli_activities_joined_marks_signed_in(monkeypatch):
                     activity_id="ACT-2002",
                     title="社会实践调研",
                     activity_type="社会实践",
+                    location="虚构活动室 B",
+                    content="调研正文预览",
                     status="未开始",
                     status_code="21",
                     signed_in=False,
@@ -495,8 +507,11 @@ def test_cli_activities_joined_marks_signed_in(monkeypatch):
     assert "已签到" in signed_line
     assert "未签到" not in signed_line
     assert "进行中" in signed_line
+    assert "虚构报告厅" in signed_line
+    assert "讲座正文" in signed_line  # human table may ellipsize
     assert "未签到" in unsigned_line
     assert "未开始" in unsigned_line
+    assert "虚构活动" in unsigned_line  # human table may ellipsize
 
     json_result = runner.invoke(cli.app, ["activities", "joined", "--json"])
     assert json_result.exit_code == 0
@@ -505,6 +520,10 @@ def test_cli_activities_joined_marks_signed_in(monkeypatch):
     assert payload[1]["signed_in"] is False
     assert payload[0]["status"] == "进行中"
     assert payload[0]["status_code"] == "5"
+    assert payload[0]["location"] == "虚构报告厅"
+    assert payload[0]["content"] == "讲座正文预览"
+    assert payload[1]["location"] == "虚构活动室 B"
+    assert payload[1]["content"] == "调研正文预览"
 
 
 def test_cli_activities_info_prints_content_and_human_status(monkeypatch):

@@ -1295,3 +1295,36 @@ async def test_enrichment_does_not_overwrite_known_status_or_location_with_empty
     assert joined[0].status == "open"
     assert joined[0].location == "虚构活动室 A"
     assert joined[0].signed_in is True
+
+
+@pytest.mark.asyncio
+async def test_optional_enrichment_http_is_capped(fixture_json, tmp_path, monkeypatch):
+    from pu_mcp import service as service_mod
+
+    monkeypatch.setattr(service_mod, "ENRICH_OPTIONAL_HTTP_LIMIT", 2)
+    items = [
+        _joined_item(f"ACT-{index}", f"已知类型活动{index}", "校园文化", hasSignIn=1)
+        for index in range(1, 6)
+    ]
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload(items),
+        activity_info_handler=lambda activity_id: _live_info(
+            activity_id,
+            "校园文化",
+            1,
+            name=f"已知类型活动{activity_id}",
+            description=f"正文{activity_id}",
+            address=f"地点{activity_id}",
+            status_name="未开始",
+            status=21,
+        ),
+    )
+    service = _make_service(client, tmp_path)
+
+    activities = await service.list_activities()
+
+    assert client.activity_info_calls == 2
+    filled = [item for item in activities if item.content]
+    assert len(filled) == 2
+    assert sum(1 for item in activities if item.content is None) == 3

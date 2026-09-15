@@ -81,7 +81,7 @@ MCP 与 CLI 同一套能力（登录除外）。七个工具：
 - `status_code`：原始 `status` / `state` 的字符串形式
 - `activity_type`：类型（`categoryName` / `typeName`）；列表常为「未知」，enrich 后补齐
 
-筛选：MCP/CLI 可用 `activity_type`；`keyword` 匹配缓存列表的 id 和标题，不是地点过滤器。`location` 只读，不是查询参数。
+筛选：MCP/CLI 可用 `activity_type`；`keyword` 匹配缓存列表的 id 和标题，不是地点过滤器。`location` 只读，不是查询参数。CLI 人机表会截断长正文；完整 `content`/`location`/时间/加分看 `--json` 或 `activities info`。list/joined 的 content/地点优先用已缓存的 activity/info；缺字段时最多额外打有限次详情（类型/签到 enrichment 不受此上限）。
 
 Grok 本机 stdio 启动（`--no-sync` 避免 `uv run` 文件锁挡住 initialize）：
 
