@@ -482,6 +482,48 @@ def test_cli_login_cli_sid_overrides_pu_sid_env(monkeypatch):
     assert "fake-password" not in result.output
 
 
+
+def test_cli_login_encoded_sid_overrides_inherited_pu_sid_env(monkeypatch):
+    """Explicit --encoded-sid must win over inherited PU_SID (Codex P2)."""
+    captured = {}
+
+    class CapturingService(MockService):
+        async def login(self, username, password, school_sid):
+            captured["username"] = username
+            captured["password"] = password
+            captured["school_sid"] = school_sid
+            return AuthSession(
+                token="test-token-abcdef123456",
+                sid="auth-sid-from-response",
+                masked_user=username,
+            )
+
+    monkeypatch.setattr(cli, "build_service", lambda: CapturingService())
+    monkeypatch.setenv("PU_SID", "111111111111111")
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "login",
+            "-u",
+            "fake-user",
+            "-p",
+            "fake-password",
+            "--encoded-sid",
+            "QVpTRFBVS19QS1hRRVhS",
+        ],
+        input="",
+    )
+
+    assert result.exit_code == 0
+    assert captured == {
+        "username": "fake-user",
+        "password": "fake-password",
+        "school_sid": "237791864815616",
+    }
+    assert "fake-password" not in result.output
+
+
 def test_cli_login_decodes_encoded_sid_from_class_url_without_printing_password(monkeypatch):
     captured = {}
 

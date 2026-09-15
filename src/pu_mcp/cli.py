@@ -60,6 +60,7 @@ def main() -> None:
 
 @app.command()
 def login(
+    ctx: typer.Context,
     username: Annotated[str, typer.Option("--username", "-u", prompt=True, envvar="PU_USERNAME")],
     password: Annotated[
         str,
@@ -69,6 +70,14 @@ def login(
     encoded_sid: Annotated[str | None, typer.Option("--encoded-sid")] = None,
 ) -> None:
     """登录并保存 session token；不会保存明文密码。"""
+    # Explicit --encoded-sid overrides inherited PU_SID (env), not a CLI --sid.
+    # Compare by .name: typer may vendor a different ParameterSource enum than click.core.
+    if (
+        sid is not None
+        and encoded_sid is not None
+        and ctx.get_parameter_source("sid").name == "ENVIRONMENT"
+    ):
+        sid = None
     if bool(sid) == bool(encoded_sid):
         console.print("[red]请提供且只提供一个学校 SID：--sid 或 --encoded-sid。[/red]")
         raise typer.Exit(1)
