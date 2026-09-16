@@ -134,18 +134,22 @@ class PuService:
         return self._filter_cached_activities(activities, filters)
 
     async def activity_detail(self, activity_id: str, *, refresh: bool = False) -> Activity:
-        if not refresh:
-            cached = self.storage.get_cached_activity(
-                activity_id,
-                max_age_seconds=self.settings.activity_cache_ttl_seconds,
-            )
-            if cached is not None and not is_list_shaped_unknown(cached):
-                return cached
+        ttl = self.settings.activity_cache_ttl_seconds
+        cached = self.storage.get_cached_activity(activity_id, max_age_seconds=ttl)
+        list_source = _list_cache_sibling(self.storage, activity_id, ttl)
+        if not refresh and cached is not None and not is_list_shaped_unknown(cached):
+            merged = _preserve_signup_from_list(cached, list_source)
+            if merged != cached:
+                self.storage.cache_activity(merged)
+            return merged
         activity = parse_activity_detail(
             await self.client.activity_info(activity_id), activity_id=activity_id
         )
-        self.storage.cache_activity(activity)
-        return activity
+        merged = _preserve_signup_from_list(activity, list_source)
+        if not merged.signup_status:
+            merged = _preserve_signup_from_list(merged, cached)
+        self.storage.cache_activity(merged)
+        return merged
 
     async def joined_activities(self) -> list[Activity]:
         merged: list[Activity] = []
@@ -377,6 +381,32 @@ def _my_list_has_more_pages(*, data: object, item_count: int, page: int, limit: 
 def _server_list_filters(filters: dict[str, object]) -> dict[str, object]:
     """PU activity_list only accepts pagination; keyword/activity_type are local."""
     return {key: filters[key] for key in ("page", "limit") if key in filters}
+
+
+def _preserve_signup_from_list(activity: Activity, source: Activity | None) -> Activity:
+    # List startTimeValue/buttonInfo signup wins; keep detail join-window times.
+    if source is None or not source.signup_status:
+        return activity
+    if (
+        activity.signup_status == source.signup_status
+        and activity.allow_signup == source.allow_signup
+    ):
+        return activity
+    return activity.model_copy(
+        update={
+            "signup_status": source.signup_status,
+            "allow_signup": source.allow_signup,
+        }
+    )
+
+
+def _list_cache_sibling(
+    storage: Storage, activity_id: str, max_age_seconds: float | None
+) -> Activity | None:
+    for item in storage.get_cached_activity_list(max_age_seconds=max_age_seconds):
+        if item.activity_id == activity_id:
+            return item
+    return None
 
 
 def _is_canonical_list_filters(filters: dict[str, object]) -> bool:
