@@ -248,7 +248,7 @@ async def test_join_activity_rejects_non_digit_id():
     async with PuClient(
         base_url="https://mock.local", session=session, min_interval_seconds=0
     ) as client:
-        with pytest.raises(ValueError, match="numeric activity id"):
+        with pytest.raises(BusinessError, match="numeric activity id"):
             await client.join_activity("ACT-1001")
 
 

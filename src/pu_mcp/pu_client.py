@@ -196,7 +196,7 @@ class PuClient:
 
     async def join_activity(self, activity_id: str) -> dict[str, Any]:
         if not (isinstance(activity_id, str) and activity_id.isdigit()):
-            raise ValueError("join_activity requires a numeric activity id (live API requires int)")
+            raise BusinessError("join_activity requires a numeric activity id (live API requires int)")
         extra_headers = {
             "X-Sign": generate_x_sign(),
             "Origin": "https://class.pocketuni.net",
