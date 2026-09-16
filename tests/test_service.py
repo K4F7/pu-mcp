@@ -1392,3 +1392,78 @@ async def test_optional_enrichment_http_is_capped(fixture_json, tmp_path, monkey
     filled = [item for item in activities if item.content]
     assert len(filled) == 2
     assert sum(1 for item in activities if item.content is None) == 3
+
+
+@pytest.mark.asyncio
+async def test_list_activities_filters_by_enriched_chinese_activity_type(fixture_json, tmp_path):
+    """activity_type filter matches post-enrichment Chinese names, not raw list labels."""
+    items = [
+        _live_list_item(1001, "实践活动"),
+        _live_list_item(1002, "文化活动"),
+        _live_list_item(1003, "讲座活动"),
+        _live_list_item(1004, "另一场文化"),
+    ]
+    details = {
+        "1001": _live_info(1001, "社会实践", 0, name="实践活动"),
+        "1002": _live_info(1002, "校园文化", 0, name="文化活动"),
+        "1003": _live_info(1003, "学术讲座", 0, name="讲座活动"),
+        "1004": _live_info(1004, "校园文化", 0, name="另一场文化"),
+    }
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload(items),
+        activity_info_handler=_live_info_by_id(details),
+    )
+    service = _make_service(client, tmp_path)
+
+    filtered = await service.list_activities(activity_type="校园文化")
+
+    assert [item.activity_id for item in filtered] == ["1002", "1004"]
+    assert {item.activity_type for item in filtered} == {"校园文化"}
+    # Client-side filter: PU API must not receive activity_type (Chinese label).
+    assert client.activity_list_filters == [{"page": 1, "limit": 20}]
+
+
+@pytest.mark.asyncio
+async def test_list_activities_unknown_activity_type_filter_returns_empty(fixture_json, tmp_path):
+    items = [
+        _live_list_item(1001, "实践活动"),
+        _live_list_item(1002, "文化活动"),
+    ]
+    details = {
+        "1001": _live_info(1001, "社会实践", 0, name="实践活动"),
+        "1002": _live_info(1002, "校园文化", 0, name="文化活动"),
+    }
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload(items),
+        activity_info_handler=_live_info_by_id(details),
+    )
+    service = _make_service(client, tmp_path)
+
+    filtered = await service.list_activities(activity_type="不存在的类型")
+
+    assert filtered == []
+    assert client.activity_list_filters == [{"page": 1, "limit": 20}]
+
+
+@pytest.mark.asyncio
+async def test_list_activities_activity_type_filter_uses_cache_then_filters(
+    fixture_json, tmp_path
+):
+    items = [
+        _complete_list_item("1001", "实践已完整", "社会实践"),
+        _complete_list_item("1002", "文化已完整", "校园文化"),
+        _complete_list_item("1003", "讲座已完整", "学术讲座"),
+    ]
+    client = FakeClient(fixture_json, activity_list_payload=_joined_payload(items))
+    service = _make_service(client, tmp_path)
+
+    await service.list_activities()  # populate catalog cache
+    filtered = await service.list_activities(activity_type="学术讲座")
+
+    assert [item.activity_id for item in filtered] == ["1003"]
+    assert filtered[0].activity_type == "学术讲座"
+    # First call fills cache; filtered call must not re-hit API with activity_type.
+    assert client.activity_list_calls == 1
+    assert client.activity_list_filters == [{"page": 1, "limit": 20}]
