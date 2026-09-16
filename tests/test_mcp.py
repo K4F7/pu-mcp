@@ -93,6 +93,10 @@ class FakeService:
         self.joined_id = activity_id
         return {"code": 0, "msg": "报名成功"}
 
+    async def cancel_activity(self, activity_id):
+        self.cancelled_id = activity_id
+        return {"code": 0, "msg": "成功"}
+
     def auth_status(self):
         return {"authenticated": True, "token": "t...en", "sid": "s...id"}
 
@@ -117,6 +121,7 @@ EXPECTED_MCP_TOOLS = {
     "list_joined",
     "attendance_counts",
     "join_activity",
+    "cancel_activity",
 }
 FORBIDDEN_MCP_TOOLS = {
     "login",
@@ -199,6 +204,30 @@ async def test_mcp_join_activity_returns_business_error(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_mcp_cancel_activity_returns_service_result(monkeypatch):
+    service = FakeService()
+    monkeypatch.setattr(mcp_server, "get_service", lambda: service)
+    async with Client(mcp, mode="legacy") as client:
+        result = await client.call_tool("cancel_activity", {"activity_id": "1001"})
+    assert result.is_error is False
+    assert service.cancelled_id == "1001"
+    assert _tool_payload(result) == {"code": 0, "msg": "成功"}
+
+
+@pytest.mark.asyncio
+async def test_mcp_cancel_activity_returns_business_error(monkeypatch):
+    class FailingService(FakeService):
+        async def cancel_activity(self, activity_id):
+            raise BusinessError("活动已开始，不可取消")
+
+    monkeypatch.setattr(mcp_server, "get_service", lambda: FailingService())
+    async with Client(mcp, mode="legacy") as client:
+        result = await client.call_tool("cancel_activity", {"activity_id": "1001"})
+    assert result.is_error is True
+    assert "活动已开始，不可取消" in _tool_error_text(result)
+
+
+@pytest.mark.asyncio
 async def test_mcp_list_joined_includes_signed_in_without_raw(monkeypatch):
     monkeypatch.setattr(mcp_server, "get_service", lambda: FakeService())
     async with Client(mcp, mode="legacy") as client:
@@ -268,6 +297,8 @@ async def test_mcp_instructions_ask_before_join_login_cli_and_counts():
     assert "pu login" in instructions
     assert "问用户" in instructions
     assert "报名" in instructions
+    assert "取消" in instructions
+    assert "cancel_activity" in instructions
     assert "已签到次数" in instructions
     assert "不代算有效学分" in instructions
     assert "glossary" in instructions

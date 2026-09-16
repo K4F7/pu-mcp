@@ -92,6 +92,10 @@ class MockService:
         self.joined_id = activity_id
         return {"code": 0, "msg": "报名成功"}
 
+    async def cancel_activity(self, activity_id):
+        self.cancelled_id = activity_id
+        return {"code": 0, "msg": "成功"}
+
     async def attendance_counts(self):
         return {
             "社会实践": 0,
@@ -140,6 +144,7 @@ def test_cli_help_works():
     activities = runner.invoke(cli.app, ["activities", "--help"])
     assert activities.exit_code == 0
     assert "join" in _plain(activities.output)
+    assert "cancel" in _plain(activities.output)
     schools = runner.invoke(cli.app, ["schools", "--help"])
     assert schools.exit_code == 0
     assert "search" in _plain(schools.output)
@@ -585,6 +590,27 @@ def test_cli_activities_join_prints_business_error_without_traceback(monkeypatch
     assert result.exit_code == 1
     assert "Traceback" not in result.output
     assert "已报名该活动" in result.output
+
+
+def test_cli_activities_cancel_calls_service(monkeypatch):
+    service = MockService()
+    monkeypatch.setattr(cli, "build_service", lambda: service)
+    result = runner.invoke(cli.app, ["activities", "cancel", "1001"])
+    assert result.exit_code == 0
+    assert service.cancelled_id == "1001"
+    assert '"msg": "成功"' in result.output
+
+
+def test_cli_activities_cancel_prints_business_error_without_traceback(monkeypatch):
+    class FailingService(MockService):
+        async def cancel_activity(self, activity_id):
+            raise BusinessError("活动已开始，不可取消")
+
+    monkeypatch.setattr(cli, "build_service", lambda: FailingService())
+    result = runner.invoke(cli.app, ["activities", "cancel", "1001"])
+    assert result.exit_code == 1
+    assert "Traceback" not in result.output
+    assert "活动已开始，不可取消" in result.output
 
 
 def test_cli_erke_prints_attendance_counts_only(monkeypatch):

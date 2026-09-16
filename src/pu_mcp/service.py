@@ -176,6 +176,9 @@ class PuService:
     async def join_activity(self, activity_id: str) -> dict:
         return await self.client.join_activity(activity_id)
 
+    async def cancel_activity(self, activity_id: str) -> dict:
+        return await self.client.cancel_activity(activity_id)
+
     async def attendance_counts(self) -> dict[str, int]:
         counts = {name: 0 for name in COUNTABLE_ACTIVITY_TYPES}
         for activity in await self.joined_activities():

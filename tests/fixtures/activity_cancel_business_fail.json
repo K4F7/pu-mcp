@@ -1,0 +1,7 @@
+{
+  "code": 40020,
+  "msg": "活动已开始，不可取消",
+  "data": {
+    "cancelled": false
+  }
+}
