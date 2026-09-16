@@ -317,6 +317,26 @@ async def test_cancel_activity_rejects_non_digit_id():
 
 
 @pytest.mark.asyncio
+async def test_join_activity_rejects_non_ascii_digit_id():
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    async with PuClient(
+        base_url="https://mock.local", session=session, min_interval_seconds=0
+    ) as client:
+        with pytest.raises(BusinessError, match="numeric activity id"):
+            await client.join_activity("²")
+
+
+@pytest.mark.asyncio
+async def test_cancel_activity_rejects_non_ascii_digit_id():
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    async with PuClient(
+        base_url="https://mock.local", session=session, min_interval_seconds=0
+    ) as client:
+        with pytest.raises(BusinessError, match="numeric activity id"):
+            await client.cancel_activity("²")
+
+
+@pytest.mark.asyncio
 @respx.mock
 async def test_business_failed_cancel_is_not_retried(fixture_json):
     route = respx.post("https://mock.local/apis/activity/cancel").mock(

@@ -194,11 +194,21 @@ class PuClient:
             payload_id = int(activity_id)
         return await self._post("/apis/activity/info", {"id": payload_id})
 
-    async def join_activity(self, activity_id: str) -> dict[str, Any]:
-        if not (isinstance(activity_id, str) and activity_id.isdigit()):
+
+    @staticmethod
+    def _require_numeric_activity_id(activity_id: str, *, action: str) -> int:
+        if not (
+            isinstance(activity_id, str)
+            and activity_id.isascii()
+            and activity_id.isdecimal()
+        ):
             raise BusinessError(
-                "join_activity requires a numeric activity id (live API requires int)"
+                f"{action} requires a numeric activity id (live API requires int)"
             )
+        return int(activity_id)
+
+    async def join_activity(self, activity_id: str) -> dict[str, Any]:
+        activity_id_int = self._require_numeric_activity_id(activity_id, action="join_activity")
         extra_headers = {
             "X-Sign": generate_x_sign(),
             "Origin": "https://class.pocketuni.net",
@@ -206,15 +216,14 @@ class PuClient:
         }
         return await self._post(
             "/apis/activity/join",
-            {"activityId": int(activity_id)},
+            {"activityId": activity_id_int},
             extra_headers=extra_headers,
         )
 
     async def cancel_activity(self, activity_id: str) -> dict[str, Any]:
-        if not (isinstance(activity_id, str) and activity_id.isdigit()):
-            raise BusinessError(
-                "cancel_activity requires a numeric activity id (live API requires int)"
-            )
+        activity_id_int = self._require_numeric_activity_id(
+            activity_id, action="cancel_activity"
+        )
         extra_headers = {
             "X-Sign": generate_x_sign(),
             "Origin": "https://class.pocketuni.net",
@@ -222,7 +231,7 @@ class PuClient:
         }
         return await self._post(
             "/apis/activity/cancel",
-            {"activityId": int(activity_id)},
+            {"activityId": activity_id_int},
             extra_headers=extra_headers,
         )
 
