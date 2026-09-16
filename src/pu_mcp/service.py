@@ -265,8 +265,11 @@ class PuService:
             needs_content = not activity.content
             needs_location = not activity.location
             needs_status = not activity.status
+            # List usually has startTimeValue → signup_status; only then skip.
+            # Do NOT treat missing signup_end_time alone as optional (live list often omits joinEndTime).
+            needs_signup = not activity.signup_status
             # status_code alone must not force HTTP; fill from TTL-aware cache only.
-            needs_optional = needs_content or needs_location or needs_status
+            needs_optional = needs_content or needs_location or needs_status or needs_signup
             needs_status_code = not activity.status_code
             if not needs_type and not needs_sign and not needs_optional and not needs_status_code:
                 return activity
