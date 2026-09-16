@@ -49,7 +49,7 @@ uv run --python 3.12 --no-sync pu activities list
 uv run --python 3.12 --no-sync pu activities list --refresh
 uv run --python 3.12 --no-sync pu activities info ACT-1001 --refresh
 uv run --python 3.12 --no-sync pu activities joined
-uv run --python 3.12 --no-sync pu activities join ACT-1001
+uv run --python 3.12 --no-sync pu activities join 1001
 uv run --python 3.12 --no-sync pu erke
 uv run --python 3.12 --no-sync pu mcp
 ```
