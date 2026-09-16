@@ -72,6 +72,8 @@ MCP 与 CLI 同一套能力（登录除外）。七个工具：
 
 登录只走 CLI：`uv run --python 3.12 --no-sync pu login --sid …`（已激活 `.venv` 时也可用裸 `pu login`）。MCP 不收密码、不提供 login 工具。无 TTY / agent 用 `-u -p --sid`，或设好 `PU_USERNAME` / `PU_PASSWORD` / `PU_SID` 后直接 `pu login`，不要把密码贴进对话。调用 `join_activity` 前应在对话里问用户是否报名。进度只给已签到次数；认定规则在 glossary。
 
+`pu activities join` / MCP `join_activity` 向 live PU 提交时使用数字 `activityId`（JSON number）和 `X-Sign`（AES-CBC 客户端签名，实现见 `src/pu_mcp/x_sign.py`）。非数字 id 会被客户端拒绝。仅 join 带 `X-Sign`。
+
 活动字段（MCP `list_activities` / `activity_detail` / `list_joined` 与 CLI `activities list` / `info` / `joined` 同一模型）：
 
 - `title`：标题（`title` / `name`）
