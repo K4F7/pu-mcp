@@ -196,7 +196,9 @@ class PuClient:
 
     async def join_activity(self, activity_id: str) -> dict[str, Any]:
         if not (isinstance(activity_id, str) and activity_id.isdigit()):
-            raise BusinessError("join_activity requires a numeric activity id (live API requires int)")
+            raise BusinessError(
+                "join_activity requires a numeric activity id (live API requires int)"
+            )
         extra_headers = {
             "X-Sign": generate_x_sign(),
             "Origin": "https://class.pocketuni.net",
@@ -204,6 +206,22 @@ class PuClient:
         }
         return await self._post(
             "/apis/activity/join",
+            {"activityId": int(activity_id)},
+            extra_headers=extra_headers,
+        )
+
+    async def cancel_activity(self, activity_id: str) -> dict[str, Any]:
+        if not (isinstance(activity_id, str) and activity_id.isdigit()):
+            raise BusinessError(
+                "cancel_activity requires a numeric activity id (live API requires int)"
+            )
+        extra_headers = {
+            "X-Sign": generate_x_sign(),
+            "Origin": "https://class.pocketuni.net",
+            "Referer": "https://class.pocketuni.net/",
+        }
+        return await self._post(
+            "/apis/activity/cancel",
             {"activityId": int(activity_id)},
             extra_headers=extra_headers,
         )

@@ -23,6 +23,8 @@ uv run --python 3.12 --no-sync pu login
 
 若 `PU_USERNAME` / `PU_PASSWORD` / `PU_SID` 已在环境中，可省略 `-u` / `-p` / `--sid`，直接 `pu login`。也可继续显式传 `-u -p --sid`。登录成功后用 `auth_status`（MCP）或 `pu auth status` 确认（脱敏）。
 
+MCP 工具含 `join_activity` / `cancel_activity`：调用前须在对话里问用户确认；向 live PU 提交时使用数字 `activityId` 与 `X-Sign`（见 `src/pu_mcp/x_sign.py`）。
+
 ## Paste-ready：command / args / env（NO cwd）
 
 ```json

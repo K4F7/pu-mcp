@@ -42,6 +42,8 @@ class FakeClient:
         self.my_list_calls = []
         self.join_calls = 0
         self.joined_activity_ids = []
+        self.cancel_calls = 0
+        self.cancelled_activity_ids = []
         self.activity_list_calls = 0
         self.activity_list_filters = []
         self.activity_info_calls = 0
@@ -84,6 +86,11 @@ class FakeClient:
         self.join_calls += 1
         self.joined_activity_ids.append(activity_id)
         return {"code": 0, "msg": "报名成功"}
+
+    async def cancel_activity(self, activity_id):
+        self.cancel_calls += 1
+        self.cancelled_activity_ids.append(activity_id)
+        return {"code": 0, "msg": "成功"}
 
     async def school_list(self):
         return self.fixture_json("school_list.json")["data"]["list"]
@@ -344,6 +351,35 @@ async def test_service_join_activity_propagates_business_error(fixture_json, tmp
         await service.join_activity("ACT-1001")
     assert client.join_calls == 1
     assert client.joined_activity_ids == ["ACT-1001"]
+
+
+@pytest.mark.asyncio
+async def test_service_cancel_activity_forwards_to_client(fixture_json, tmp_path):
+    client = FakeClient(fixture_json)
+    service = _make_service(client, tmp_path)
+
+    result = await service.cancel_activity("1001")
+
+    assert client.cancel_calls == 1
+    assert client.cancelled_activity_ids == ["1001"]
+    assert result == {"code": 0, "msg": "成功"}
+
+
+@pytest.mark.asyncio
+async def test_service_cancel_activity_propagates_business_error(fixture_json, tmp_path):
+    class FailingClient(FakeClient):
+        async def cancel_activity(self, activity_id):
+            self.cancel_calls += 1
+            self.cancelled_activity_ids.append(activity_id)
+            raise BusinessError("活动已开始，不可取消")
+
+    client = FailingClient(fixture_json)
+    service = _make_service(client, tmp_path)
+
+    with pytest.raises(BusinessError, match="活动已开始，不可取消"):
+        await service.cancel_activity("1001")
+    assert client.cancel_calls == 1
+    assert client.cancelled_activity_ids == ["1001"]
 
 
 def _page_info(page: int, limit: int, total: int) -> dict:

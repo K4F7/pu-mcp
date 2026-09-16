@@ -270,6 +270,70 @@ async def test_business_failed_join_is_not_retried(fixture_json):
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_cancel_activity_is_authenticated_post(fixture_json):
+    route = respx.post("https://mock.local/apis/activity/cancel").mock(
+        return_value=httpx.Response(200, json=fixture_json("activity_cancel_success.json"))
+    )
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    with patch("pu_mcp.pu_client.generate_x_sign", return_value="MOCK_X_SIGN"):
+        async with PuClient(
+            base_url="https://mock.local", session=session, min_interval_seconds=0
+        ) as client:
+            payload = await client.cancel_activity("1001")
+    assert payload["code"] == 0
+    assert payload["msg"] == "成功"
+    assert route.calls[0].request.method == "POST"
+    assert route.calls[0].request.url.path == "/apis/activity/cancel"
+    assert route.calls[0].request.content == b'{"activityId":1001}'
+    assert route.calls[0].request.headers["Authorization"] == "Bearer TEST_TOKEN:TEST_SID"
+    assert route.calls[0].request.headers["X-Sign"] == "MOCK_X_SIGN"
+    assert route.calls[0].request.headers["Origin"] == "https://class.pocketuni.net"
+    assert route.calls[0].request.headers["Referer"] == "https://class.pocketuni.net/"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_cancel_activity_coerces_numeric_string_id_to_int(fixture_json):
+    route = respx.post("https://mock.local/apis/activity/cancel").mock(
+        return_value=httpx.Response(200, json=fixture_json("activity_cancel_success.json"))
+    )
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    with patch("pu_mcp.pu_client.generate_x_sign", return_value="MOCK_X_SIGN"):
+        async with PuClient(
+            base_url="https://mock.local", session=session, min_interval_seconds=0
+        ) as client:
+            await client.cancel_activity("1001")
+    assert route.calls[0].request.content == b'{"activityId":1001}'
+
+
+@pytest.mark.asyncio
+async def test_cancel_activity_rejects_non_digit_id():
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    async with PuClient(
+        base_url="https://mock.local", session=session, min_interval_seconds=0
+    ) as client:
+        with pytest.raises(BusinessError, match="numeric activity id"):
+            await client.cancel_activity("ACT-1001")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_business_failed_cancel_is_not_retried(fixture_json):
+    route = respx.post("https://mock.local/apis/activity/cancel").mock(
+        return_value=httpx.Response(200, json=fixture_json("activity_cancel_business_fail.json"))
+    )
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    with patch("pu_mcp.pu_client.generate_x_sign", return_value="MOCK_X_SIGN"):
+        async with PuClient(
+            base_url="https://mock.local", session=session, min_interval_seconds=0
+        ) as client:
+            with pytest.raises(BusinessError, match="活动已开始，不可取消"):
+                await client.cancel_activity("1001")
+    assert len(route.calls) == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_activity_info_coerces_numeric_string_id_to_int():
     route = respx.post("https://mock.local/apis/activity/info").mock(
         return_value=httpx.Response(200, json={"code": 0, "data": {}})

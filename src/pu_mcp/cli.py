@@ -263,6 +263,17 @@ def activities_join(activity_id: str) -> None:
     console.print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+@activities_app.command("cancel")
+def activities_cancel(activity_id: str) -> None:
+    """立即向 PU 取消报名。"""
+    try:
+        result = _run(build_service().cancel_activity(activity_id))
+    except PuToolError as exc:
+        _print_error(exc)
+        raise typer.Exit(1) from exc
+    console.print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 @app.command("erke")
 def erke() -> None:
     """打印各活动类型已签到次数，与 MCP attendance_counts 同一结构。"""

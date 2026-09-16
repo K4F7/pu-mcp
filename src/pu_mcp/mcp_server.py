@@ -15,6 +15,7 @@ INSTRUCTIONS = (
     "未登录时可用 search_schools 按校名或简称查学校 sid，列出匹配项请用户确认后再登录。"
     "登录后用 auth_status 确认（脱敏）。"
     "调用 join_activity 报名前，先在对话里问用户是否报名。"
+    "调用 cancel_activity 取消报名前，先在对话里问用户是否取消。"
     "进度只给出已签到次数；认定规则以 glossary 为准，本工具不代算有效学分。"
 )
 
@@ -140,6 +141,18 @@ async def join_activity(activity_id: str) -> dict:
     """
     try:
         return await get_service().join_activity(activity_id)
+    except PuToolError as exc:
+        raise ToolError(str(exc)) from exc
+
+
+@mcp.tool()
+async def cancel_activity(activity_id: str) -> dict:
+    """立即向 PU 取消报名。activityId 须为数字；请求带 X-Sign（见 pu_mcp.x_sign）。
+
+    已取消、不可取消等业务错误原样返回。调用前先在对话里问用户。
+    """
+    try:
+        return await get_service().cancel_activity(activity_id)
     except PuToolError as exc:
         raise ToolError(str(exc)) from exc
 
