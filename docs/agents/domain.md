@@ -46,6 +46,8 @@ If the concept you need isn't in the glossary yet, that's a signal — either yo
 
 ## Flag ADR conflicts
 
+Activity `status` is the activity itself (未开始/进行中/已结束 from `statusName`). Signup window is independent: `signup_status` / `allow_signup` from list `startTimeValue`, info `buttonInfo`, and `joinStartTime`/`joinEndTime`. See ADR 0018.
+
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
 > _Contradicts ADR-0007 (event-sourced orders) — but worth reopening because…_

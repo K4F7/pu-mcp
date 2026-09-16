@@ -1,0 +1,28 @@
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "puType": 0,
+    "baseInfo": {
+      "name": "报名已结束合成活动",
+      "categoryName": "思想引领",
+      "description": "报名窗口已关闭",
+      "address": "虚构活动室 B",
+      "statusName": "进行中",
+      "status": 5,
+      "joinStartTime": "2020-01-01 00:00:00",
+      "joinEndTime": "2020-01-31 23:59:59"
+    },
+    "userStatus": {
+      "hasSignIn": 0,
+      "hasJoin": 0,
+      "joinStatus": 0
+    },
+    "buttonInfo": [
+      {
+        "name": "未报名",
+        "event": ""
+      }
+    ]
+  }
+}

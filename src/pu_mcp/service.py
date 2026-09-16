@@ -245,6 +245,13 @@ class PuService:
                 updates["status"] = detail.status
             if needs_status_code and detail.status_code:
                 updates["status_code"] = detail.status_code
+            if not activity.signup_status and detail.signup_status:
+                updates["signup_status"] = detail.signup_status
+                updates["allow_signup"] = detail.allow_signup
+            if activity.signup_start_time is None and detail.signup_start_time is not None:
+                updates["signup_start_time"] = detail.signup_start_time
+            if activity.signup_end_time is None and detail.signup_end_time is not None:
+                updates["signup_end_time"] = detail.signup_end_time
             if not updates:
                 return activity
             return activity.model_copy(update=updates)

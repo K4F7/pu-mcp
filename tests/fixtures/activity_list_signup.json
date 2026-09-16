@@ -1,0 +1,39 @@
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "list": [
+      {
+        "id": "ACT-3001",
+        "name": "进行中但报名已结束",
+        "typeName": "校园文化",
+        "statusName": "进行中",
+        "status": 5,
+        "startTimeValue": "报名已结束",
+        "joinStartTime": "2026-06-01 00:00:00",
+        "allowJoinCount": 99,
+        "joinStatus": 0,
+        "hasJoin": 0
+      },
+      {
+        "id": "ACT-3002",
+        "name": "报名进行中的活动",
+        "typeName": "学术讲座",
+        "statusName": "未开始",
+        "status": 21,
+        "startTimeValue": "报名进行中",
+        "joinStartTime": "2026-06-08 18:30:00",
+        "allowJoinCount": 0
+      },
+      {
+        "id": "ACT-3003",
+        "name": "报名未开始的活动",
+        "typeName": "思想引领",
+        "statusName": "未开始",
+        "status": 21,
+        "startTimeValue": "报名未开始",
+        "joinStartTime": "2026-09-01 00:00:00"
+      }
+    ]
+  }
+}

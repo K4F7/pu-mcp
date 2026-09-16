@@ -1187,6 +1187,32 @@ async def test_joined_activities_enriches_content_location_status_from_info(fixt
 
 
 @pytest.mark.asyncio
+async def test_list_activities_enriches_signup_state_from_info(fixture_json, tmp_path):
+    def info_handler(_id):
+        payload = _live_info(1001, "校园文化", 0, name="校园文化合成活动")
+        payload["data"]["baseInfo"]["joinStartTime"] = "2026-06-01 00:00:00"
+        payload["data"]["baseInfo"]["joinEndTime"] = "2026-12-31 23:59:59"
+        payload["data"]["buttonInfo"] = [{"name": "报名", "event": "join"}]
+        return payload
+
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload([_live_list_item(1001, "校园文化合成活动")]),
+        activity_info_handler=info_handler,
+    )
+    service = _make_service(client, tmp_path)
+
+    activities = await service.list_activities()
+
+    assert activities[0].activity_type == "校园文化"
+    assert activities[0].signup_status == "报名进行中"
+    assert activities[0].allow_signup is True
+    assert activities[0].signup_start_time is not None
+    assert activities[0].signup_end_time is not None
+    assert client.activity_info_calls == 1
+
+
+@pytest.mark.asyncio
 async def test_list_activities_skips_info_when_content_location_status_present(
     fixture_json, tmp_path
 ):

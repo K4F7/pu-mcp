@@ -1,0 +1,27 @@
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "puType": 0,
+    "baseInfo": {
+      "name": "报名未开始合成活动",
+      "categoryName": "学术讲座",
+      "description": "报名尚未开始",
+      "address": "虚构报告厅",
+      "statusName": "未开始",
+      "status": 21,
+      "joinStartTime": "2099-01-01 00:00:00",
+      "joinEndTime": "2099-01-31 23:59:59"
+    },
+    "userStatus": {
+      "hasSignIn": 0,
+      "hasJoin": 0
+    },
+    "buttonInfo": [
+      {
+        "name": "报名未开始",
+        "event": ""
+      }
+    ]
+  }
+}

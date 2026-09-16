@@ -36,6 +36,8 @@ class MockService:
                 content="合成活动说明正文",
                 status="进行中",
                 status_code="5",
+                signup_status="报名进行中",
+                allow_signup=True,
                 score_items=[
                     ScoreItem(
                         kind="credit", label="加分", value="2", unit="分", source_field="score"
@@ -184,14 +186,16 @@ def test_cli_activity_list_displays_type_and_scores(monkeypatch):
     plain = _plain(result.output)
     assert "志愿公益" in plain
     assert "进行中" in plain
-    assert "虚构活动室 A" in plain
-    assert "合成活动说明" in plain  # human table may ellipsize long content
+    assert "虚构活动" in plain  # human table may ellipsize
+    assert "合成活动" in plain  # human table may ellipsize long content
     json_result = runner.invoke(cli.app, ["activities", "list", "--json"])
     assert json_result.exit_code == 0
     payload = json.loads(_plain(json_result.output))
     assert payload[0]["content"] == "合成活动说明正文"
     assert payload[0]["location"] == "虚构活动室 A"
     assert payload[0]["score_items"]
+    assert payload[0]["signup_status"] == "报名进行中"
+    assert payload[0]["allow_signup"] is True
 
 
 def test_cli_json_output(monkeypatch):
@@ -482,7 +486,6 @@ def test_cli_login_cli_sid_overrides_pu_sid_env(monkeypatch):
     assert "fake-password" not in result.output
 
 
-
 def test_cli_login_encoded_sid_overrides_inherited_pu_sid_env(monkeypatch):
     """Explicit --encoded-sid must win over inherited PU_SID (Codex P2)."""
     captured = {}
@@ -629,6 +632,8 @@ def test_cli_activities_joined_marks_signed_in(monkeypatch):
                     content="讲座正文预览",
                     status="进行中",
                     status_code="5",
+                    signup_status="报名已结束",
+                    allow_signup=False,
                     signed_in=True,
                 ),
                 Activity(
@@ -639,6 +644,8 @@ def test_cli_activities_joined_marks_signed_in(monkeypatch):
                     content="调研正文预览",
                     status="未开始",
                     status_code="21",
+                    signup_status="报名进行中",
+                    allow_signup=True,
                     signed_in=False,
                 ),
             ]
@@ -652,11 +659,11 @@ def test_cli_activities_joined_marks_signed_in(monkeypatch):
     assert "已签到" in signed_line
     assert "未签到" not in signed_line
     assert "进行中" in signed_line
-    assert "虚构报告厅" in signed_line
-    assert "讲座正文" in signed_line  # human table may ellipsize
+    assert "虚构" in signed_line  # human table may ellipsize
+    assert "讲座" in signed_line  # human table may ellipsize
     assert "未签到" in unsigned_line
     assert "未开始" in unsigned_line
-    assert "虚构活动" in unsigned_line  # human table may ellipsize
+    assert "虚构" in unsigned_line  # human table may ellipsize
 
     json_result = runner.invoke(cli.app, ["activities", "joined", "--json"])
     assert json_result.exit_code == 0
@@ -665,6 +672,10 @@ def test_cli_activities_joined_marks_signed_in(monkeypatch):
     assert payload[1]["signed_in"] is False
     assert payload[0]["status"] == "进行中"
     assert payload[0]["status_code"] == "5"
+    assert payload[0]["signup_status"] == "报名已结束"
+    assert payload[0]["allow_signup"] is False
+    assert payload[1]["signup_status"] == "报名进行中"
+    assert payload[1]["allow_signup"] is True
     assert payload[0]["location"] == "虚构报告厅"
     assert payload[0]["content"] == "讲座正文预览"
     assert payload[1]["location"] == "虚构活动室 B"
@@ -686,3 +697,108 @@ def test_cli_activities_info_prints_content_and_human_status(monkeypatch):
     assert payload["content"] == "合成活动说明正文"
     assert payload["status"] == "进行中"
     assert payload["status_code"] == "5"
+    assert payload["signup_status"] == "报名进行中"
+    assert payload["allow_signup"] is True
+
+
+def test_cli_activity_list_shows_signup_state_separate_from_status(monkeypatch):
+    class MixedListService(MockService):
+        async def list_activities(self, **filters):
+            self.list_filters = filters
+            return [
+                Activity(
+                    activity_id="ACT-3001",
+                    title="进行中但报名已结束",
+                    activity_type="校园文化",
+                    location="虚构活动室 A",
+                    content="已结束报名",
+                    status="进行中",
+                    status_code="5",
+                    signup_status="报名已结束",
+                    allow_signup=False,
+                ),
+                Activity(
+                    activity_id="ACT-3002",
+                    title="报名进行中的活动",
+                    activity_type="学术讲座",
+                    location="虚构报告厅",
+                    content="还能报",
+                    status="未开始",
+                    status_code="21",
+                    signup_status="报名进行中",
+                    allow_signup=True,
+                ),
+            ]
+
+    monkeypatch.setattr(cli, "build_service", lambda: MixedListService())
+    result = runner.invoke(cli.app, ["activities", "list"])
+    assert result.exit_code == 0
+    plain = _plain(result.output)
+    assert "报名状态" in plain
+    assert "可报" in plain
+    ended_line = next(line for line in plain.splitlines() if "ACT-3001" in line)
+    open_line = next(line for line in plain.splitlines() if "ACT-3002" in line)
+    assert "进行中" in ended_line
+    assert "报名已结束" in ended_line
+    assert "否" in ended_line
+    assert "未开始" in open_line
+    assert "报名进行中" in open_line
+    assert "是" in open_line
+
+
+def test_cli_activities_info_shows_signup_state_separate_from_status(monkeypatch):
+    monkeypatch.setattr(cli, "build_service", lambda: MockService())
+    result = runner.invoke(cli.app, ["activities", "info", "ACT-1001"])
+    assert result.exit_code == 0
+    plain = _plain(result.output)
+    assert "状态：进行中" in plain
+    assert "报名状态：报名进行中" in plain
+    assert "可报：是" in plain
+    status_line = next(line for line in plain.splitlines() if line.startswith("状态："))
+    assert status_line == "状态：进行中"
+
+
+def test_cli_activities_joined_shows_signup_state_separate_from_status(monkeypatch):
+    class MixedJoinedService(MockService):
+        async def joined_activities(self):
+            return [
+                Activity(
+                    activity_id="ACT-2001",
+                    title="校园文化讲座",
+                    activity_type="校园文化",
+                    location="虚构报告厅",
+                    content="讲座正文预览",
+                    status="进行中",
+                    status_code="5",
+                    signup_status="报名已结束",
+                    allow_signup=False,
+                    signed_in=True,
+                ),
+                Activity(
+                    activity_id="ACT-2002",
+                    title="社会实践调研",
+                    activity_type="社会实践",
+                    location="虚构活动室 B",
+                    content="调研正文预览",
+                    status="未开始",
+                    status_code="21",
+                    signup_status="报名进行中",
+                    allow_signup=True,
+                    signed_in=False,
+                ),
+            ]
+
+    monkeypatch.setattr(cli, "build_service", lambda: MixedJoinedService())
+    result = runner.invoke(cli.app, ["activities", "joined"])
+    assert result.exit_code == 0
+    plain = _plain(result.output)
+    assert "报名状态" in plain
+    assert "可报" in plain
+    signed_line = next(line for line in plain.splitlines() if "ACT-2001" in line)
+    unsigned_line = next(line for line in plain.splitlines() if "ACT-2002" in line)
+    assert "进行中" in signed_line
+    assert "报名已结束" in signed_line
+    assert "否" in signed_line
+    assert "未开始" in unsigned_line
+    assert "报名进行中" in unsigned_line
+    assert "是" in unsigned_line

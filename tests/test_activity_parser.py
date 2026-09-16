@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 
 from pu_mcp.activity_parser import parse_activity, parse_activity_detail, parse_activity_list
@@ -300,3 +302,219 @@ def test_parse_legacy_open_status_stays_in_status(fixture_json):
 def test_parse_live_detail_location_from_address(fixture_json):
     activity = parse_activity_detail(fixture_json("activity_info_live.json"), activity_id="1001")
     assert activity.location == "虚构活动室 A"
+
+
+def test_parse_list_signup_ended_while_activity_in_progress(fixture_json):
+    activities = parse_activity_list(fixture_json("activity_list_signup.json"))
+    ended = activities[0]
+    assert ended.activity_id == "ACT-3001"
+    assert ended.status == "进行中"
+    assert ended.signup_status == "报名已结束"
+    assert ended.allow_signup is False
+    assert ended.signup_start_time == datetime(2026, 6, 1, 0, 0, 0)
+
+
+def test_parse_list_signup_in_progress_from_start_time_value(fixture_json):
+    activities = parse_activity_list(fixture_json("activity_list_signup.json"))
+    open_signup = activities[1]
+    assert open_signup.status == "未开始"
+    assert open_signup.signup_status == "报名进行中"
+    assert open_signup.allow_signup is True
+
+
+def test_parse_list_signup_not_started_from_start_time_value(fixture_json):
+    activities = parse_activity_list(fixture_json("activity_list_signup.json"))
+    pending = activities[2]
+    assert pending.status == "未开始"
+    assert pending.signup_status == "报名未开始"
+    assert pending.allow_signup is False
+
+
+def test_parse_join_start_and_end_time_aliases():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "报名窗口",
+            "joinStartTime": "2026-06-08 18:30:00",
+            "joinEndTime": "2026-06-09 18:30:00",
+        }
+    )
+    assert activity.signup_start_time == datetime(2026, 6, 8, 18, 30, 0)
+    assert activity.signup_end_time == datetime(2026, 6, 9, 18, 30, 0)
+
+
+def test_parse_info_signup_open_from_button_join(fixture_json):
+    activity = parse_activity_detail(
+        fixture_json("activity_info_signup_open.json"), activity_id="4001"
+    )
+    assert activity.status == "未开始"
+    assert activity.signup_status == "报名进行中"
+    assert activity.allow_signup is True
+    assert activity.signup_start_time == datetime(2026, 6, 1, 0, 0, 0)
+    assert activity.signup_end_time == datetime(2026, 12, 31, 23, 59, 59)
+
+
+def test_parse_info_signup_not_started_from_button_name(fixture_json):
+    activity = parse_activity_detail(
+        fixture_json("activity_info_signup_not_started.json"), activity_id="4002"
+    )
+    assert activity.signup_status == "报名未开始"
+    assert activity.allow_signup is False
+
+
+def test_parse_info_signup_ended_from_weibaoming_button(fixture_json):
+    activity = parse_activity_detail(
+        fixture_json("activity_info_signup_ended.json"), activity_id="4003"
+    )
+    assert activity.status == "进行中"
+    assert activity.signup_status == "报名已结束"
+    assert activity.allow_signup is False
+
+
+def test_parse_button_info_single_dict_join_event():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "单按钮",
+            "statusName": "未开始",
+            "buttonInfo": {"name": "报名", "event": "join"},
+        }
+    )
+    assert activity.signup_status == "报名进行中"
+    assert activity.allow_signup is True
+
+
+def test_allow_join_count_does_not_drive_allow_signup():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "不可靠名额",
+            "statusName": "进行中",
+            "startTimeValue": "报名已结束",
+            "allowJoinCount": 99,
+        }
+    )
+    assert activity.signup_status == "报名已结束"
+    assert activity.allow_signup is False
+
+
+def test_join_status_is_not_signup_status():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "用户已报",
+            "statusName": "进行中",
+            "startTimeValue": "报名已结束",
+            "joinStatus": 1,
+            "hasJoin": 1,
+        }
+    )
+    assert activity.status == "进行中"
+    assert activity.signup_status == "报名已结束"
+    assert activity.allow_signup is False
+
+
+def test_status_name_is_not_signup_status():
+    activity = parse_activity({"id": "1001", "name": "讲座", "statusName": "进行中"})
+    assert activity.status == "进行中"
+    assert activity.signup_status is None
+    assert activity.allow_signup is False
+
+
+def test_numeric_start_time_value_is_not_signup_status():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "时间戳",
+            "startTimeValue": 1718000000,
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        }
+    )
+    assert activity.signup_status == "报名进行中"
+    assert activity.allow_signup is True
+
+
+def test_datetime_start_time_value_is_not_signup_status():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "时间文本",
+            "startTimeValue": "2026-06-08 18:30:00",
+            "buttonInfo": [{"name": "报名未开始", "event": ""}],
+        }
+    )
+    assert activity.signup_status == "报名未开始"
+    assert activity.allow_signup is False
+
+
+def test_parse_signup_status_from_join_window_in_progress():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "窗口内",
+            "joinStartTime": "2000-01-01 00:00:00",
+            "joinEndTime": "2099-01-01 00:00:00",
+        }
+    )
+    assert activity.signup_status == "报名进行中"
+    assert activity.allow_signup is True
+
+
+def test_parse_signup_status_from_join_window_not_started():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "窗口未开",
+            "joinStartTime": "2099-01-01 00:00:00",
+            "joinEndTime": "2099-12-31 00:00:00",
+        }
+    )
+    assert activity.signup_status == "报名未开始"
+    assert activity.allow_signup is False
+
+
+def test_parse_signup_status_from_join_window_ended():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "窗口已关",
+            "joinStartTime": "2000-01-01 00:00:00",
+            "joinEndTime": "2000-01-31 00:00:00",
+        }
+    )
+    assert activity.signup_status == "报名已结束"
+    assert activity.allow_signup is False
+
+
+def test_parse_signup_status_prefers_start_time_value_over_window():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "文案优先",
+            "statusName": "进行中",
+            "startTimeValue": "报名已结束",
+            "joinStartTime": "2000-01-01 00:00:00",
+            "joinEndTime": "2099-01-01 00:00:00",
+        }
+    )
+    assert activity.status == "进行中"
+    assert activity.signup_status == "报名已结束"
+    assert activity.allow_signup is False
+
+
+def test_parse_signup_status_uses_injected_now():
+    payload = {
+        "id": "1001",
+        "name": "可注入现在",
+        "joinStartTime": "2026-06-08 00:00:00",
+        "joinEndTime": "2026-06-10 00:00:00",
+    }
+    before = parse_activity(payload, now=datetime(2026, 6, 7, 12, 0, 0))
+    during = parse_activity(payload, now=datetime(2026, 6, 9, 12, 0, 0))
+    after = parse_activity(payload, now=datetime(2026, 6, 11, 12, 0, 0))
+    assert before.signup_status == "报名未开始"
+    assert before.allow_signup is False
+    assert during.signup_status == "报名进行中"
+    assert during.allow_signup is True
+    assert after.signup_status == "报名已结束"
+    assert after.allow_signup is False

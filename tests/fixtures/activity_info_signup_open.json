@@ -1,0 +1,28 @@
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "puType": 0,
+    "baseInfo": {
+      "name": "开放报名合成活动",
+      "categoryName": "校园文化",
+      "description": "报名进行中的详情",
+      "address": "虚构活动室 A",
+      "statusName": "未开始",
+      "status": 21,
+      "joinStartTime": "2026-06-01 00:00:00",
+      "joinEndTime": "2026-12-31 23:59:59"
+    },
+    "userStatus": {
+      "hasSignIn": 0,
+      "hasJoin": 0,
+      "joinStatus": 0
+    },
+    "buttonInfo": [
+      {
+        "name": "报名",
+        "event": "join"
+      }
+    ]
+  }
+}
