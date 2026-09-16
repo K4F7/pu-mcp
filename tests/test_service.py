@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pu_mcp.activity_parser import parse_activity
+from pu_mcp.activity_parser import parse_activity, parse_activity_detail
 from pu_mcp.errors import BusinessError
 from pu_mcp.models import AuthSession
 from pu_mcp.service import PuService
@@ -1032,6 +1032,122 @@ async def test_activity_detail_backfills_id_when_info_omits_id(fixture_json, tmp
     assert detail.activity_type == "校园文化"
     assert detail.signed_in is True
     assert client.activity_info_ids == ["1001"]
+
+
+@pytest.mark.asyncio
+async def test_activity_detail_keeps_list_signup_when_info_omits_signup_fields(
+    fixture_json, tmp_path
+):
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload(
+            [_complete_list_item("ACT-1001", "合成志愿服务活动", "志愿公益")]
+        ),
+        activity_info_handler=lambda _id: _live_info(
+            "ACT-1001",
+            "志愿公益",
+            1,
+            name="合成志愿服务活动",
+            description="详情正文",
+            address="详情地点",
+            status_name="进行中",
+            status=5,
+        ),
+    )
+    service = _make_service(client, tmp_path)
+
+    listed = await service.list_activities()
+    assert listed[0].signup_status == "报名进行中"
+    assert listed[0].allow_signup is True
+    assert client.activity_info_calls == 0
+
+    detail = await service.activity_detail("ACT-1001")
+    assert detail.signup_status == "报名进行中"
+    assert detail.allow_signup is True
+    assert client.activity_info_calls == 1
+
+    cached = await service.activity_detail("ACT-1001", refresh=False)
+    assert cached.signup_status == "报名进行中"
+    assert cached.allow_signup is True
+    assert client.activity_info_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_activity_detail_fills_signup_window_without_clobbering_list_signup(
+    fixture_json, tmp_path
+):
+    def info_handler(_id):
+        payload = _live_info(
+            "ACT-1001",
+            "志愿公益",
+            1,
+            name="合成志愿服务活动",
+            description="详情正文",
+            address="详情地点",
+            status_name="进行中",
+            status=5,
+        )
+        payload["data"]["baseInfo"]["joinStartTime"] = "2026-01-01 00:00:00"
+        payload["data"]["baseInfo"]["joinEndTime"] = "2026-01-31 23:59:59"
+        return payload
+
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload(
+            [_complete_list_item("ACT-1001", "合成志愿服务活动", "志愿公益")]
+        ),
+        activity_info_handler=info_handler,
+    )
+    service = _make_service(client, tmp_path)
+
+    listed = await service.list_activities()
+    assert listed[0].signup_status == "报名进行中"
+    assert listed[0].allow_signup is True
+    assert client.activity_info_calls == 0
+
+    detail = await service.activity_detail("ACT-1001")
+    assert detail.signup_status == "报名进行中"
+    assert detail.allow_signup is True
+    assert detail.signup_start_time == datetime(2026, 1, 1, 0, 0, 0)
+    assert detail.signup_end_time == datetime(2026, 1, 31, 23, 59, 59)
+
+
+@pytest.mark.asyncio
+async def test_activity_detail_backfills_signup_from_list_cache_when_detail_cache_missing(
+    fixture_json, tmp_path
+):
+    client = FakeClient(
+        fixture_json,
+        activity_info_handler=lambda _id: _live_info(
+            "ACT-1001", "志愿公益", 1, name="合成志愿服务活动"
+        ),
+    )
+    service = _make_service(client, tmp_path)
+    poisoned = parse_activity_detail(
+        _live_info("ACT-1001", "志愿公益", 1, name="合成志愿服务活动"),
+        activity_id="ACT-1001",
+    )
+    assert poisoned.signup_status is None
+    assert poisoned.allow_signup is False
+    service.storage.cache_activity(poisoned)
+    service.storage.cache_activity_list(
+        [parse_activity(_complete_list_item("ACT-1001", "合成志愿服务活动", "志愿公益"))]
+    )
+
+    detail = await service.activity_detail("ACT-1001", refresh=False)
+    assert client.activity_info_calls == 0
+    assert detail.signup_status == "报名进行中"
+    assert detail.allow_signup is True
+
+    healed = service.storage.get_cached_activity("ACT-1001")
+    assert healed is not None
+    assert healed.signup_status == "报名进行中"
+    assert healed.allow_signup is True
+
+    cached = await service.activity_detail("ACT-1001", refresh=False)
+    assert cached.signup_status == "报名进行中"
+    assert cached.allow_signup is True
+    assert client.activity_info_calls == 0
 
 
 @pytest.mark.asyncio
