@@ -1119,6 +1119,8 @@ def _complete_list_item(activity_id: str, title: str, activity_type: str, **fiel
         "statusName": "进行中",
         "status": 5,
         "hasSignIn": 1,
+        "startTimeValue": "报名进行中",
+        "joinStartTime": "2026-06-01 00:00:00",
     }
     payload.update(fields)
     return payload
@@ -1183,6 +1185,68 @@ async def test_joined_activities_enriches_content_location_status_from_info(fixt
     assert joined[0].status_code == "5"
     assert joined[0].activity_type == "志愿公益"
     assert joined[0].signed_in is True
+    assert client.activity_info_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_list_activities_enriches_when_only_signup_status_missing(fixture_json, tmp_path):
+    """Complete list fields except signup_status still optional-enrich from info."""
+    def info_handler(_id):
+        payload = _live_info(
+            "ACT-1001",
+            "志愿公益",
+            1,
+            name="合成志愿服务活动",
+            description="详情正文",
+            address="详情地点",
+            status_name="进行中",
+            status=5,
+        )
+        payload["data"]["baseInfo"]["joinStartTime"] = "2026-06-01 00:00:00"
+        payload["data"]["baseInfo"]["joinEndTime"] = "2026-12-31 23:59:59"
+        payload["data"]["buttonInfo"] = [{"name": "报名", "event": "join"}]
+        return payload
+
+    incomplete = _complete_list_item("ACT-1001", "合成志愿服务活动", "志愿公益")
+    incomplete.pop("startTimeValue", None)
+    incomplete.pop("joinStartTime", None)
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload([incomplete]),
+        activity_info_handler=info_handler,
+    )
+    service = _make_service(client, tmp_path)
+
+    activities = await service.list_activities()
+
+    assert activities[0].signup_status == "报名进行中"
+    assert activities[0].allow_signup is True
+    assert client.activity_info_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_list_activities_enriches_signup_state_from_info(fixture_json, tmp_path):
+    def info_handler(_id):
+        payload = _live_info(1001, "校园文化", 0, name="校园文化合成活动")
+        payload["data"]["baseInfo"]["joinStartTime"] = "2026-06-01 00:00:00"
+        payload["data"]["baseInfo"]["joinEndTime"] = "2026-12-31 23:59:59"
+        payload["data"]["buttonInfo"] = [{"name": "报名", "event": "join"}]
+        return payload
+
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=_joined_payload([_live_list_item(1001, "校园文化合成活动")]),
+        activity_info_handler=info_handler,
+    )
+    service = _make_service(client, tmp_path)
+
+    activities = await service.list_activities()
+
+    assert activities[0].activity_type == "校园文化"
+    assert activities[0].signup_status == "报名进行中"
+    assert activities[0].allow_signup is True
+    assert activities[0].signup_start_time is not None
+    assert activities[0].signup_end_time is not None
     assert client.activity_info_calls == 1
 
 

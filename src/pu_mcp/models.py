@@ -39,12 +39,16 @@ class Activity(BaseModel):
     content: str | None = None
     status: str | None = None
     status_code: str | None = None
+    signup_status: str | None = None
+    allow_signup: bool = False
     signed_in: bool = False
     credits: str | None = None
     score_items: list[ScoreItem] = Field(default_factory=list)
     raw: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("status", "status_code", "location", "organizer", "content", mode="before")
+    @field_validator(
+        "status", "status_code", "location", "organizer", "content", "signup_status", mode="before"
+    )
     @classmethod
     def coerce_optional_str(cls, value: Any) -> str | None:
         if value is None:

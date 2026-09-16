@@ -160,19 +160,23 @@ def activities_list(
         )
         return
     # Human table keeps agent-readable fields; times/scores remain in --json / info.
-    table = Table(title="PU 活动（仅用于本人账号）")
+    table = Table(title="PU 活动（仅用于本人账号）", padding=(0, 0))
     table.add_column("活动 ID", no_wrap=True)
-    table.add_column("标题", overflow="ellipsis", max_width=18)
+    table.add_column("标题", overflow="ellipsis", max_width=10)
     table.add_column("类型", no_wrap=True)
     table.add_column("状态", no_wrap=True)
-    table.add_column("地点", overflow="ellipsis", max_width=14)
-    table.add_column("内容", overflow="ellipsis", max_width=18)
+    table.add_column("报名状态", no_wrap=True)
+    table.add_column("可报", no_wrap=True)
+    table.add_column("地点", overflow="ellipsis", max_width=12)
+    table.add_column("内容", overflow="ellipsis", max_width=10)
     for item in activities:
         table.add_row(
             item.activity_id,
             item.title,
             item.activity_type,
             item.status or "-",
+            item.signup_status or "-",
+            "是" if item.allow_signup else "否",
             item.location or "-",
             _cli_preview(item.content, limit=18),
         )
@@ -201,6 +205,8 @@ def activities_info(
     console.print(f"地点：{activity.location or '-'}")
     console.print(f"内容：{activity.content or '-'}")
     console.print(f"状态：{activity.status or '-'}")
+    console.print(f"报名状态：{activity.signup_status or '-'}")
+    console.print(f"可报：{'是' if activity.allow_signup else '否'}")
     console.print(f"报名：{activity.signup_start_time or '-'} ~ {activity.signup_end_time or '-'}")
     console.print(f"活动：{activity.start_time or '-'} ~ {activity.end_time or '-'}")
     console.print(f"加分/学分/积分：{_score_summary(activity)}")
@@ -221,13 +227,15 @@ def joined_activities(json_output: Annotated[bool, typer.Option("--json")] = Fal
             )
         )
         return
-    table = Table(title="已报名活动")
+    table = Table(title="已报名活动", padding=(0, 0))
     table.add_column("活动 ID", no_wrap=True)
-    table.add_column("标题", overflow="ellipsis", max_width=16)
+    table.add_column("标题", overflow="ellipsis", max_width=8)
     table.add_column("类型", no_wrap=True)
     table.add_column("状态", no_wrap=True)
-    table.add_column("地点", overflow="ellipsis", max_width=12)
-    table.add_column("内容", overflow="ellipsis", max_width=14)
+    table.add_column("报名状态", no_wrap=True)
+    table.add_column("可报", no_wrap=True)
+    table.add_column("地点", overflow="ellipsis", max_width=10)
+    table.add_column("内容", overflow="ellipsis", max_width=8)
     table.add_column("签到", no_wrap=True)
     for item in activities:
         table.add_row(
@@ -235,6 +243,8 @@ def joined_activities(json_output: Annotated[bool, typer.Option("--json")] = Fal
             item.title,
             item.activity_type,
             item.status or "-",
+            item.signup_status or "-",
+            "是" if item.allow_signup else "否",
             item.location or "-",
             _cli_preview(item.content, limit=14),
             "已签到" if item.signed_in else "未签到",

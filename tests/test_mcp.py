@@ -36,6 +36,9 @@ JOINED_ACTIVITIES = [
         activity_id="ACT-2001",
         title="已签到合成活动",
         activity_type="校园文化",
+        status="进行中",
+        signup_status="报名已结束",
+        allow_signup=False,
         signed_in=True,
         raw={"internal": True},
     ),
@@ -43,6 +46,9 @@ JOINED_ACTIVITIES = [
         activity_id="ACT-2002",
         title="未签到合成活动",
         activity_type="社会实践",
+        status="未开始",
+        signup_status="报名进行中",
+        allow_signup=True,
         signed_in=False,
     ),
 ]
@@ -206,8 +212,41 @@ async def test_mcp_list_joined_includes_signed_in_without_raw(monkeypatch):
     assert "content" in payload["activities"][0]
     assert "status" in payload["activities"][0]
     assert "status_code" in payload["activities"][0]
+    assert payload["activities"][0]["status"] == "进行中"
+    assert payload["activities"][0]["signup_status"] == "报名已结束"
+    assert payload["activities"][0]["allow_signup"] is False
+    assert payload["activities"][1]["signup_status"] == "报名进行中"
+    assert payload["activities"][1]["allow_signup"] is True
     assert "raw" not in payload["activities"][0]
     assert "internal" not in str(payload)
+
+
+@pytest.mark.asyncio
+async def test_mcp_list_activities_includes_signup_state_without_raw(monkeypatch):
+    monkeypatch.setattr(mcp_server, "get_service", lambda: FakeService())
+    async with Client(mcp, mode="legacy") as client:
+        result = await client.call_tool("list_activities", {})
+    assert result.is_error is False
+    payload = _tool_payload(result)
+    first = payload["activities"][0]
+    assert first["signup_status"] == "报名已结束"
+    assert first["allow_signup"] is False
+    assert first["status"] == "进行中"
+    assert first["signup_status"] != first["status"]
+    assert "raw" not in first
+
+
+@pytest.mark.asyncio
+async def test_mcp_activity_detail_includes_signup_state_without_raw(monkeypatch):
+    monkeypatch.setattr(mcp_server, "get_service", lambda: FakeService())
+    async with Client(mcp, mode="legacy") as client:
+        result = await client.call_tool("activity_detail", {"activity_id": "ACT-2001"})
+    assert result.is_error is False
+    payload = _tool_payload(result)
+    assert payload["signup_status"] == "报名已结束"
+    assert payload["allow_signup"] is False
+    assert payload["status"] == "进行中"
+    assert "raw" not in payload
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from typing import Any
 
 from pu_mcp.errors import ParseError
 from pu_mcp.models import Activity, ScoreItem
+from pu_mcp.time_utils import ensure_aware_local
 
 TYPE_FIELDS = (
     "categoryName",
@@ -19,8 +20,9 @@ ID_FIELDS = ("id", "activityId", "activity_id")
 TITLE_FIELDS = ("title", "name", "activityName")
 START_FIELDS = ("startTime", "start_time", "beginTime")
 END_FIELDS = ("endTime", "end_time", "finishTime")
-SIGNUP_START_FIELDS = ("applyStartTime", "signup_start", "signupStartTime")
-SIGNUP_END_FIELDS = ("applyEndTime", "signup_end", "signupEndTime")
+SIGNUP_START_FIELDS = ("joinStartTime", "applyStartTime", "signup_start", "signupStartTime")
+SIGNUP_END_FIELDS = ("joinEndTime", "applyEndTime", "signup_end", "signupEndTime")
+SIGNUP_STATUS_KNOWN = ("报名进行中", "报名已结束", "报名未开始")
 LOCATION_FIELDS = ("address", "location", "place")
 ORGANIZER_FIELDS = ("organizer", "host", "clubName")
 STATUS_FIELDS = ("status", "state")
@@ -142,6 +144,72 @@ def _score_items(raw: dict[str, Any]) -> list[ScoreItem]:
     return items
 
 
+def _iter_button_info(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    value = raw.get("buttonInfo")
+    if value is None:
+        value = raw.get("button_info")
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _human_start_time_value(value: Any) -> str | None:
+    if value in (None, "") or isinstance(value, bool | int | float):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if "报名" in text or text in SIGNUP_STATUS_KNOWN:
+        return text
+    return None
+
+
+def _signup_status_from_window(
+    start: datetime | None, end: datetime | None, now: datetime
+) -> str | None:
+    if start is None and end is None:
+        return None
+    current = ensure_aware_local(now)
+    start_at = ensure_aware_local(start) if start is not None else None
+    end_at = ensure_aware_local(end) if end is not None else None
+    if start_at is not None and current < start_at:
+        return "报名未开始"
+    if end_at is not None and current > end_at:
+        return "报名已结束"
+    return "报名进行中"
+
+
+def _parse_signup_state(
+    raw: dict[str, Any],
+    *,
+    signup_start: datetime | None,
+    signup_end: datetime | None,
+    now: datetime | None,
+) -> tuple[str | None, bool]:
+    buttons = _iter_button_info(raw)
+    has_join_event = any(item.get("event") == "join" for item in buttons)
+    current = now if now is not None else datetime.now()
+    signup_status = _human_start_time_value(raw.get("startTimeValue", raw.get("start_time_value")))
+    if signup_status is None:
+        if has_join_event:
+            signup_status = "报名进行中"
+        else:
+            not_started = any("报名未开始" in str(item.get("name") or "") for item in buttons)
+            unnamed = any(str(item.get("name") or "") == "未报名" for item in buttons)
+            if not_started:
+                signup_status = "报名未开始"
+            elif unnamed:
+                signup_status = (
+                    _signup_status_from_window(signup_start, signup_end, current) or "报名已结束"
+                )
+            else:
+                signup_status = _signup_status_from_window(signup_start, signup_end, current)
+    allow_signup = signup_status == "报名进行中" or has_join_event
+    return signup_status, allow_signup
+
+
 def _parse_signed_in(raw: dict[str, Any]) -> bool:
     for field in SIGNED_IN_FIELDS:
         if field not in raw:
@@ -180,7 +248,7 @@ def is_list_shaped_unknown(activity: Activity) -> bool:
     return activity.activity_type == "未知" and not is_detail_shaped(activity)
 
 
-def parse_activity(raw: dict[str, Any]) -> Activity:
+def parse_activity(raw: dict[str, Any], *, now: datetime | None = None) -> Activity:
     raw = _flatten_nested_activity_fields(raw)
     activity_id = _first(raw, ID_FIELDS)
     title = _first(raw, TITLE_FIELDS)
@@ -199,6 +267,11 @@ def parse_activity(raw: dict[str, Any]) -> Activity:
         status = None
     else:
         status = status_code
+    signup_start_time = _parse_datetime(_first(raw, SIGNUP_START_FIELDS))
+    signup_end_time = _parse_datetime(_first(raw, SIGNUP_END_FIELDS))
+    signup_status, allow_signup = _parse_signup_state(
+        raw, signup_start=signup_start_time, signup_end=signup_end_time, now=now
+    )
     # list/myList lack type names; detail has categoryName after flattening baseInfo.
     return Activity(
         activity_id=str(activity_id),
@@ -206,13 +279,15 @@ def parse_activity(raw: dict[str, Any]) -> Activity:
         activity_type=str(_first(raw, TYPE_FIELDS, "未知")),
         start_time=_parse_datetime(_first(raw, START_FIELDS)),
         end_time=_parse_datetime(_first(raw, END_FIELDS)),
-        signup_start_time=_parse_datetime(_first(raw, SIGNUP_START_FIELDS)),
-        signup_end_time=_parse_datetime(_first(raw, SIGNUP_END_FIELDS)),
+        signup_start_time=signup_start_time,
+        signup_end_time=signup_end_time,
         location=_first(raw, LOCATION_FIELDS),
         organizer=_first(raw, ORGANIZER_FIELDS),
         content=content,
         status=status,
         status_code=status_code,
+        signup_status=signup_status,
+        allow_signup=allow_signup,
         signed_in=_parse_signed_in(raw),
         credits=credits,
         score_items=score_items,
@@ -220,7 +295,7 @@ def parse_activity(raw: dict[str, Any]) -> Activity:
     )
 
 
-def parse_activity_list(response: dict[str, Any]) -> list[Activity]:
+def parse_activity_list(response: dict[str, Any], *, now: datetime | None = None) -> list[Activity]:
     data = _data(response)
     if isinstance(data, dict):
         items = data.get("list") or data.get("items") or data.get("rows") or []
@@ -228,14 +303,16 @@ def parse_activity_list(response: dict[str, Any]) -> list[Activity]:
         items = data
     else:
         raise ParseError("activity list data is invalid")
-    return [parse_activity(item) for item in items]
+    return [parse_activity(item, now=now) for item in items]
 
 
-def parse_activity_detail(response: dict[str, Any], *, activity_id: str | None = None) -> Activity:
+def parse_activity_detail(
+    response: dict[str, Any], *, activity_id: str | None = None, now: datetime | None = None
+) -> Activity:
     data = _data(response)
     if not isinstance(data, dict):
         raise ParseError("activity detail data is invalid")
     payload = _flatten_nested_activity_fields(data)
     if _first(payload, ID_FIELDS) in (None, "") and activity_id not in (None, ""):
         payload["id"] = activity_id
-    return parse_activity(payload)
+    return parse_activity(payload, now=now)

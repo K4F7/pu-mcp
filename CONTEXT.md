@@ -148,6 +148,14 @@ _Avoid_: MCP login, MCP Auth（当指收 PU 账密）
 向 PU 提交参加一场活动。本工具当场执行，不排队、不弹确认；用户在对话里点头后再调用。仅报名不计有效学分。
 _Avoid_: 待抢, 自动报名, 加入待抢
 
+**活动状态**:
+PU 活动本身的人读状态（未开始/进行中/已结束），来自 `statusName`。不是能不能报名。
+_Avoid_: 报名状态
+
+**报名状态**:
+报名窗口的人读状态（报名未开始/报名进行中/报名已结束）。list 用 `startTimeValue`；info 用 `buttonInfo` 或 `joinStartTime`/`joinEndTime`。`allow_signup` 表示现在能否报。
+_Avoid_: 活动状态, allowJoinCount, joinStatus（用户是否已报，不是窗口）
+
 **MCP**:
 agent 调用本工具能力的接口，跑在本机。给 agent 访问 PU：认证状态、学校查询、列活动、活动详情、已报名、报名，以及各活动类型已签到次数。不收账密，不返回有效学分、必须补、总有效分、阶段线，不把公式写入工具描述，不提供待抢，不推荐场次。标准协议，不绑某一家客户端。PU 会话不出本机。
 _Avoid_: 托管 MCP, 活动建议, 待抢, 已获（当作为 MCP 返回）
