@@ -46,7 +46,7 @@ def test_parse_activity_detail_preserves_unknown_reward_fields(fixture_json):
 def test_parse_activity_list_coerces_int_status_from_my_list(fixture_json):
     activities = parse_activity_list(fixture_json("my_list_joined.json"))
     assert activities[0].activity_id == "ACT-1009"
-    assert activities[0].status is None
+    assert activities[0].status == "已结束"
     assert activities[0].status_code == "23"
 
 
@@ -281,14 +281,58 @@ def test_parse_human_status_name_snake_case():
 
 def test_parse_numeric_status_only_is_status_code():
     activity = parse_activity({"id": "1001", "name": "讲座", "status": 23})
-    assert activity.status is None
+    assert activity.status == "已结束"
     assert activity.status_code == "23"
 
 
 def test_parse_numeric_status_string_only_is_status_code():
     activity = parse_activity({"id": "1001", "name": "讲座", "status": "23"})
-    assert activity.status is None
+    assert activity.status == "已结束"
     assert activity.status_code == "23"
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        (5, "已结束"),
+        ("5", "已结束"),
+        (21, "未开始"),
+        ("21", "未开始"),
+        (22, "进行中"),
+        ("22", "进行中"),
+        (23, "已结束"),
+        ("23", "已结束"),
+    ],
+)
+def test_parse_maps_known_numeric_status_code_to_human_status(code, expected):
+    activity = parse_activity({"id": "1001", "name": "讲座", "status": code})
+    assert activity.status == expected
+    assert activity.status_code == str(code)
+
+
+def test_parse_unknown_numeric_status_code_stays_null():
+    activity = parse_activity({"id": "1001", "name": "讲座", "status": 99})
+    assert activity.status is None
+    assert activity.status_code == "99"
+
+
+def test_parse_empty_status_name_maps_ended_code_five():
+    activity = parse_activity({"id": "1001", "name": "讲座", "statusName": "", "status": 5})
+    assert activity.status == "已结束"
+    assert activity.status_code == "5"
+
+
+def test_parse_status_name_wins_over_conflicting_ended_code():
+    activity = parse_activity({"id": "1001", "name": "讲座", "statusName": "进行中", "status": 5})
+    assert activity.status == "进行中"
+    assert activity.status_code == "5"
+
+
+def test_parse_mapped_activity_status_is_not_signup_status():
+    activity = parse_activity({"id": "1001", "name": "讲座", "status": 5})
+    assert activity.status == "已结束"
+    assert activity.signup_status is None
+    assert activity.allow_signup is False
 
 
 def test_parse_legacy_open_status_stays_in_status(fixture_json):

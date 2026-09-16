@@ -79,7 +79,7 @@ MCP 与 CLI 同一套能力（登录除外）。七个工具：
 - `title`：标题（`title` / `name`）
 - `content`：正文，优先 `description`，否则 `content`；空字符串为 null
 - `location`：地点（`address` / `location`）；列表常缺，详情/enrich 补齐
-- `status`：活动人读状态（`statusName` / `status_name`）；不把纯数字码当状态。这是活动本身（未开始/进行中/已结束），不是能不能报
+- `status`：活动人读状态，优先 `statusName` / `status_name`；无非空 statusName 时按 `status_code` 映射 5/23→已结束、21→未开始、22→进行中，未知数字码仍为 null，不要把纯数字码原样当 status。这是活动本身（未开始/进行中/已结束），不是能不能报
 - `status_code`：原始 `status` / `state` 的字符串形式
 - `signup_status`：报名窗口人读状态（报名未开始/报名进行中/报名已结束）。list 优先 `startTimeValue`；info 用 `buttonInfo`（`event==join` → 报名进行中，名称含「报名未开始」/「未报名」），否则用 `joinStartTime`/`joinEndTime` 相对现在推导
 - `allow_signup`：现在能否报。`signup_status == 报名进行中` 或 `buttonInfo.event==join` 为 true。不要用 `allowJoinCount`（live 上常为 0）、不要用 `joinStatus`/`hasJoin`（那是用户是否已报）
