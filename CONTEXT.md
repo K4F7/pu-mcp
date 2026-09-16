@@ -149,7 +149,7 @@ _Avoid_: MCP login, MCP Auth（当指收 PU 账密）
 _Avoid_: 待抢, 自动报名, 加入待抢
 
 **活动状态**:
-PU 活动本身的人读状态（未开始/进行中/已结束），来自 `statusName`。不是能不能报名。
+PU 活动本身的人读状态（未开始/进行中/已结束），来自 `statusName`。缺 statusName 时按 status_code 映射常见中文。不是能不能报名。
 _Avoid_: 报名状态
 
 **报名状态**:

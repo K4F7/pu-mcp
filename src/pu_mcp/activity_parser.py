@@ -28,6 +28,12 @@ ORGANIZER_FIELDS = ("organizer", "host", "clubName")
 STATUS_FIELDS = ("status", "state")
 STATUS_CODE_FIELDS = STATUS_FIELDS
 STATUS_NAME_FIELDS = ("statusName", "status_name")
+STATUS_CODE_LABELS = {
+    "5": "已结束",
+    "21": "未开始",
+    "22": "进行中",
+    "23": "已结束",
+}
 CONTENT_FIELDS = ("description", "content")
 SIGNED_IN_FIELDS = (
     "signedIn",
@@ -260,11 +266,11 @@ def parse_activity(raw: dict[str, Any], *, now: datetime | None = None) -> Activ
     human_status = _first(raw, STATUS_NAME_FIELDS)
     status_code_value = _first(raw, STATUS_CODE_FIELDS)
     status_code = str(status_code_value) if status_code_value is not None else None
-    # statusName is the human label; bare numeric status/state is status_code only.
+    # statusName is the human label; known numeric codes map when the name is missing.
     if human_status is not None:
         status = str(human_status)
     elif status_code is not None and status_code.isdigit():
-        status = None
+        status = STATUS_CODE_LABELS.get(status_code)
     else:
         status = status_code
     signup_start_time = _parse_datetime(_first(raw, SIGNUP_START_FIELDS))
