@@ -125,11 +125,13 @@ class PuService:
                 if enriched != cached:
                     self.storage.cache_activity_list(enriched)
                 return self._filter_cached_activities(enriched, filters)
-        activities = parse_activity_list(await self.client.activity_list(**filters))
+        activities = parse_activity_list(
+            await self.client.activity_list(**_server_list_filters(filters))
+        )
         activities = await self._enrich_activities(activities, resolve_sign_in=False)
         if use_list_cache:
             self.storage.cache_activity_list(activities)
-        return activities
+        return self._filter_cached_activities(activities, filters)
 
     async def activity_detail(self, activity_id: str, *, refresh: bool = False) -> Activity:
         if not refresh:
@@ -266,7 +268,8 @@ class PuService:
             needs_location = not activity.location
             needs_status = not activity.status
             # List usually has startTimeValue → signup_status; only then skip.
-            # Do NOT treat missing signup_end_time alone as optional (live list often omits joinEndTime).
+            # Do NOT treat missing signup_end_time alone as optional
+            # (live list often omits joinEndTime).
             needs_signup = not activity.signup_status
             # status_code alone must not force HTTP; fill from TTL-aware cache only.
             needs_optional = needs_content or needs_location or needs_status or needs_signup
@@ -368,8 +371,13 @@ def _my_list_has_more_pages(*, data: object, item_count: int, page: int, limit: 
     return False
 
 
+def _server_list_filters(filters: dict[str, object]) -> dict[str, object]:
+    """PU activity_list only accepts pagination; keyword/activity_type are local."""
+    return {key: filters[key] for key in ("page", "limit") if key in filters}
+
+
 def _is_canonical_list_filters(filters: dict[str, object]) -> bool:
-    """List catalog cache is only for the default first page with no filters."""
+    """First-page catalog cache; keyword and activity_type are local filters."""
     allowed = {"page", "limit", "keyword", "activity_type"}
     if any(key not in allowed for key in filters):
         return False
@@ -378,9 +386,7 @@ def _is_canonical_list_filters(filters: dict[str, object]) -> bool:
         limit = int(filters.get("limit") or 20)
     except (TypeError, ValueError):
         return False
-    keyword = str(filters.get("keyword") or "").strip()
-    activity_type = str(filters.get("activity_type") or "").strip()
-    return page == 1 and limit == 20 and not keyword and not activity_type
+    return page == 1 and limit == 20
 
 
 def _raw_has_signed_in_field(raw: object) -> bool:
