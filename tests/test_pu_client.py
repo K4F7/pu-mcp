@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -39,6 +40,7 @@ async def test_login_success_extracts_session(fixture_json):
         b'{"userName":"demo","password":"secret","sid":237791864815616,"device":"pc"}'
     )
     assert "Authorization" not in route.calls[0].request.headers
+    assert "X-Sign" not in route.calls[0].request.headers
 
 
 @pytest.mark.asyncio
@@ -110,6 +112,7 @@ async def test_authenticated_activity_calls_send_authorization(fixture_json):
         payload = await client.activity_list()
     assert payload["code"] == 0
     assert route.calls[0].request.headers["Authorization"] == "Bearer TEST_TOKEN:TEST_SID"
+    assert "X-Sign" not in route.calls[0].request.headers
 
 
 @pytest.mark.asyncio
@@ -208,15 +211,45 @@ async def test_join_activity_is_authenticated_post(fixture_json):
         return_value=httpx.Response(200, json=fixture_json("activity_join_success.json"))
     )
     session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
-    async with PuClient(
-        base_url="https://mock.local", session=session, min_interval_seconds=0
-    ) as client:
-        payload = await client.join_activity("ACT-1001")
+    with patch("pu_mcp.pu_client.generate_x_sign", return_value="MOCK_X_SIGN"):
+        async with PuClient(
+            base_url="https://mock.local", session=session, min_interval_seconds=0
+        ) as client:
+            payload = await client.join_activity("1001")
     assert payload["code"] == 0
     assert payload["msg"] == "报名成功"
     assert route.calls[0].request.method == "POST"
     assert route.calls[0].request.url.path == "/apis/activity/join"
+    assert route.calls[0].request.content == b'{"activityId":1001}'
     assert route.calls[0].request.headers["Authorization"] == "Bearer TEST_TOKEN:TEST_SID"
+    assert route.calls[0].request.headers["X-Sign"] == "MOCK_X_SIGN"
+    assert route.calls[0].request.headers["Origin"] == "https://class.pocketuni.net"
+    assert route.calls[0].request.headers["Referer"] == "https://class.pocketuni.net/"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_join_activity_coerces_numeric_string_id_to_int(fixture_json):
+    route = respx.post("https://mock.local/apis/activity/join").mock(
+        return_value=httpx.Response(200, json=fixture_json("activity_join_success.json"))
+    )
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    with patch("pu_mcp.pu_client.generate_x_sign", return_value="MOCK_X_SIGN"):
+        async with PuClient(
+            base_url="https://mock.local", session=session, min_interval_seconds=0
+        ) as client:
+            await client.join_activity("1001")
+    assert route.calls[0].request.content == b'{"activityId":1001}'
+
+
+@pytest.mark.asyncio
+async def test_join_activity_rejects_non_digit_id():
+    session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
+    async with PuClient(
+        base_url="https://mock.local", session=session, min_interval_seconds=0
+    ) as client:
+        with pytest.raises(BusinessError, match="numeric activity id"):
+            await client.join_activity("ACT-1001")
 
 
 @pytest.mark.asyncio
@@ -226,11 +259,12 @@ async def test_business_failed_join_is_not_retried(fixture_json):
         return_value=httpx.Response(200, json=fixture_json("activity_join_business_fail.json"))
     )
     session = AuthSession(token="TEST_TOKEN", sid="TEST_SID")
-    async with PuClient(
-        base_url="https://mock.local", session=session, min_interval_seconds=0
-    ) as client:
-        with pytest.raises(BusinessError):
-            await client.join_activity("ACT-1001")
+    with patch("pu_mcp.pu_client.generate_x_sign", return_value="MOCK_X_SIGN"):
+        async with PuClient(
+            base_url="https://mock.local", session=session, min_interval_seconds=0
+        ) as client:
+            with pytest.raises(BusinessError):
+                await client.join_activity("1001")
     assert len(route.calls) == 1
 
 
@@ -246,6 +280,7 @@ async def test_activity_info_coerces_numeric_string_id_to_int():
     ) as client:
         await client.activity_info("1001")
     assert route.calls[0].request.content == b'{"id":1001}'
+    assert "X-Sign" not in route.calls[0].request.headers
 
 
 @pytest.mark.asyncio

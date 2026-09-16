@@ -10,6 +10,7 @@ import httpx
 
 from pu_mcp.errors import AuthError, BusinessError, NetworkError, RateLimitError, RiskControlError
 from pu_mcp.models import AuthSession
+from pu_mcp.x_sign import generate_x_sign
 
 RISK_WORDS = ("验证码", "captcha", "风控", "风险", "异常登录", "设备")
 SID_XOR_KEY = "sid"
@@ -86,6 +87,7 @@ class PuClient:
         payload: dict[str, Any] | None = None,
         *,
         authenticated: bool = True,
+        extra_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         attempts = self.max_retries + 1
         last_error: Exception | None = None
@@ -93,7 +95,8 @@ class PuClient:
             try:
                 async with self._request_lock:
                     await self._throttle()
-                    kwargs: dict[str, Any] = {"headers": self._headers(authenticated)}
+                    headers = {**self._headers(authenticated), **(extra_headers or {})}
+                    kwargs: dict[str, Any] = {"headers": headers}
                     if method.upper() != "GET":
                         kwargs["json"] = payload or {}
                     response = await self._client.request(method, path, **kwargs)
@@ -125,8 +128,11 @@ class PuClient:
         payload: dict[str, Any] | None = None,
         *,
         authenticated: bool = True,
+        extra_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        return await self._request("POST", path, payload, authenticated=authenticated)
+        return await self._request(
+            "POST", path, payload, authenticated=authenticated, extra_headers=extra_headers
+        )
 
     async def _get(
         self,
@@ -189,7 +195,18 @@ class PuClient:
         return await self._post("/apis/activity/info", {"id": payload_id})
 
     async def join_activity(self, activity_id: str) -> dict[str, Any]:
-        return await self._post("/apis/activity/join", {"id": activity_id})
+        if not (isinstance(activity_id, str) and activity_id.isdigit()):
+            raise BusinessError("join_activity requires a numeric activity id (live API requires int)")
+        extra_headers = {
+            "X-Sign": generate_x_sign(),
+            "Origin": "https://class.pocketuni.net",
+            "Referer": "https://class.pocketuni.net/",
+        }
+        return await self._post(
+            "/apis/activity/join",
+            {"activityId": int(activity_id)},
+            extra_headers=extra_headers,
+        )
 
     async def my_list(self, **filters: Any) -> dict[str, Any]:
         payload = {"type": 1, "page": 1, "limit": 20, **filters}

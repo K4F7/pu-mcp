@@ -134,7 +134,10 @@ async def attendance_counts() -> dict:
 
 @mcp.tool()
 async def join_activity(activity_id: str) -> dict:
-    """立即向 PU 提交报名。已报名等业务错误原样返回。调用前先在对话里问用户。"""
+    """立即向 PU 提交报名。activityId 须为数字；请求带 X-Sign（见 pu_mcp.x_sign）。
+
+    已报名等业务错误原样返回。调用前先在对话里问用户。
+    """
     try:
         return await get_service().join_activity(activity_id)
     except PuToolError as exc:
