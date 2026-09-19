@@ -283,9 +283,10 @@ class PuService:
                 updates["signup_status"] = detail.signup_status
                 updates["allow_signup"] = detail.allow_signup
             # Participation rules come from activity/info; never clobber list signup window.
-            if detail.allowed_years or detail.allowed_colleges or is_detail_shaped(detail):
+            if detail.participation_rules_known or is_detail_shaped(detail):
                 updates["allowed_years"] = detail.allowed_years
                 updates["allowed_colleges"] = detail.allowed_colleges
+                updates["participation_rules_known"] = True
             if activity.signup_start_time is None and detail.signup_start_time is not None:
                 updates["signup_start_time"] = detail.signup_start_time
             if activity.signup_end_time is None and detail.signup_end_time is not None:
@@ -307,8 +308,20 @@ class PuService:
             # Do NOT treat missing signup_end_time alone as optional
             # (live list often omits joinEndTime).
             needs_signup = not activity.signup_status
+            # List omits allowYear/allowCollege; fetch info for open signups until rules known.
+            needs_participation = (
+                activity.allow_signup
+                and not activity.participation_rules_known
+                and not is_detail_shaped(activity)
+            )
             # status_code alone must not force HTTP; fill from TTL-aware cache only.
-            needs_optional = needs_content or needs_location or needs_status or needs_signup
+            needs_optional = (
+                needs_content
+                or needs_location
+                or needs_status
+                or needs_signup
+                or needs_participation
+            )
             needs_status_code = not activity.status_code
             if not needs_type and not needs_sign and not needs_optional and not needs_status_code:
                 return activity

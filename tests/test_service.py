@@ -1273,6 +1273,9 @@ def _complete_list_item(activity_id: str, title: str, activity_type: str, **fiel
         "hasSignIn": 1,
         "startTimeValue": "报名进行中",
         "joinStartTime": "2026-06-01 00:00:00",
+        # Explicit empty rules: known unrestricted (live list omits these keys).
+        "allowYear": [],
+        "allowCollege": [],
     }
     payload.update(fields)
     return payload
@@ -1717,3 +1720,74 @@ async def test_activity_detail_eligibility_year_mismatch(fixture_json, tmp_path)
     assert detail.allowed_years == ["24"]
     assert detail.eligible is False
     assert detail.allow_signup is False
+
+
+@pytest.mark.asyncio
+async def test_list_activities_fetches_info_when_participation_rules_unknown(
+    fixture_json, tmp_path
+):
+    """Open signup without allowYear keys must optional-enrich for participation rules."""
+
+    def info_handler(activity_id):
+        return {
+            "code": 0,
+            "msg": "ok",
+            "data": {
+                "id": activity_id,
+                "name": "考研择校择专业专题讲座",
+                "categoryName": "学术讲座",
+                "description": "详情正文",
+                "address": "详情地点",
+                "statusName": "未开始",
+                "status": 21,
+                "allowYear": [{"name": "24"}],
+                "allowCollege": [],
+                "buttonInfo": [{"name": "报名", "event": "join"}],
+            },
+        }
+
+    list_payload = {
+        "code": 0,
+        "msg": "ok",
+        "data": {
+            "list": [
+                {
+                    "id": "378191869837313",
+                    "name": "考研择校择专业专题讲座",
+                    "typeName": "学术讲座",
+                    "description": "已有正文",
+                    "address": "虚构活动室 A",
+                    "statusName": "进行中",
+                    "status": 5,
+                    "startTimeValue": "报名进行中",
+                    "buttonInfo": [{"name": "报名", "event": "join"}],
+                }
+            ]
+        },
+    }
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=list_payload,
+        activity_info_handler=info_handler,
+    )
+    store = MemorySessionStore()
+    store.save(
+        AuthSession(
+            token="test-token-abcdef123456",
+            sid="test-sid-654321",
+            masked_user="demo",
+            year="25",
+            college="软件与物联网工程学院",
+        )
+    )
+    service = PuService(
+        client=client,
+        storage=Storage(tmp_path / "test.db"),
+        session_store=store,
+    )
+    activities = await service.list_activities(refresh=True)
+    assert client.activity_info_calls == 1
+    assert activities[0].participation_rules_known is True
+    assert activities[0].allowed_years == ["24"]
+    assert activities[0].eligible is False
+    assert activities[0].allow_signup is False

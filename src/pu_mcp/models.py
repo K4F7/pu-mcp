@@ -48,6 +48,7 @@ class Activity(BaseModel):
     score_items: list[ScoreItem] = Field(default_factory=list)
     allowed_years: list[str] = Field(default_factory=list)
     allowed_colleges: list[str] = Field(default_factory=list)
+    participation_rules_known: bool = False
     eligible: bool | None = None
     ineligible_reason: str | None = None
     raw: dict[str, Any] = Field(default_factory=dict)

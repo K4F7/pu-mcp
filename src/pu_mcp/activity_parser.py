@@ -254,6 +254,13 @@ def is_list_shaped_unknown(activity: Activity) -> bool:
     return activity.activity_type == "未知" and not is_detail_shaped(activity)
 
 
+_PARTICIPATION_RULE_KEYS = ("allowYear", "allow_year", "allowCollege", "allow_college")
+
+
+def participation_rules_known_in_raw(raw: dict[str, Any]) -> bool:
+    return any(key in raw for key in _PARTICIPATION_RULE_KEYS)
+
+
 def _allow_name_list(raw: dict[str, Any], *keys: str) -> list[str]:
     value = None
     for key in keys:
@@ -318,17 +325,29 @@ def apply_eligibility(
     ``activity.allow_signup`` must be the window/join-button verdict when
     ``activity.eligible is not False``. If already gated (eligible is False),
     recover the window from signup_status == 报名进行中.
+
+    When participation rules were never observed (list payloads without
+    allowYear/allowCollege), keep eligible=None instead of treating empty
+    lists as unrestricted.
     """
+    if activity.eligible is False:
+        window_allow = activity.signup_status == "报名进行中"
+    else:
+        window_allow = activity.allow_signup
+    if not activity.participation_rules_known:
+        return activity.model_copy(
+            update={
+                "eligible": None,
+                "ineligible_reason": None,
+                "allow_signup": bool(window_allow),
+            }
+        )
     eligible, reason = evaluate_eligibility(
         activity.allowed_years,
         activity.allowed_colleges,
         user_year=user_year,
         user_college=user_college,
     )
-    if activity.eligible is False:
-        window_allow = activity.signup_status == "报名进行中"
-    else:
-        window_allow = activity.allow_signup
     return activity.model_copy(
         update={
             "eligible": eligible,
@@ -368,14 +387,18 @@ def parse_activity(
     signup_status, window_allow = _parse_signup_state(
         raw, signup_start=signup_start_time, signup_end=signup_end_time, now=now
     )
+    rules_known = participation_rules_known_in_raw(raw)
     allowed_years = _allow_name_list(raw, "allowYear", "allow_year")
     allowed_colleges = _allow_name_list(raw, "allowCollege", "allow_college")
-    eligible, ineligible_reason = evaluate_eligibility(
-        allowed_years,
-        allowed_colleges,
-        user_year=user_year,
-        user_college=user_college,
-    )
+    if rules_known:
+        eligible, ineligible_reason = evaluate_eligibility(
+            allowed_years,
+            allowed_colleges,
+            user_year=user_year,
+            user_college=user_college,
+        )
+    else:
+        eligible, ineligible_reason = None, None
     allow_signup = bool(window_allow) and (eligible is not False)
     # list/myList lack type names; detail has categoryName after flattening baseInfo.
     return Activity(
@@ -398,6 +421,7 @@ def parse_activity(
         score_items=score_items,
         allowed_years=allowed_years,
         allowed_colleges=allowed_colleges,
+        participation_rules_known=rules_known,
         eligible=eligible,
         ineligible_reason=ineligible_reason,
         raw=raw,

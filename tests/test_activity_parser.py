@@ -696,3 +696,36 @@ def test_apply_eligibility_gates_existing_window_allow():
     assert gated.eligible is False
     assert gated.allow_signup is False
     assert "年级不符合参与条件" in (gated.ineligible_reason or "")
+
+
+def test_missing_allow_keys_leave_eligible_unknown_not_unrestricted():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "列表无参与条件字段",
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+        user_year="25",
+        user_college="软件与物联网工程学院",
+    )
+    assert activity.participation_rules_known is False
+    assert activity.eligible is None
+    assert activity.ineligible_reason is None
+    assert activity.allow_signup is True
+
+
+def test_empty_allow_keys_present_are_known_unrestricted():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "显式空限制",
+            "allowYear": [],
+            "allowCollege": [],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+        user_year="25",
+        user_college="软件与物联网工程学院",
+    )
+    assert activity.participation_rules_known is True
+    assert activity.eligible is True
+    assert activity.allow_signup is True
