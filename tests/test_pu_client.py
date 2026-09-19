@@ -429,3 +429,54 @@ async def test_concurrent_requests_share_serial_throttle_window():
     assert len(sent_at) == 3
     intervals = [second - first for first, second in zip(sent_at, sent_at[1:], strict=False)]
     assert all(interval >= 0.025 for interval in intervals)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_login_persists_year_and_college_from_base_user_info():
+    respx.post("https://mock.local/uc/user/login").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "msg": "ok",
+                "data": {
+                    "token": "tok-year-college",
+                    "sid": "sid-year-college",
+                    "baseUserInfo": {
+                        "account": "stu_account",
+                        "year": "25",
+                        "collegeName": "软件与物联网工程学院",
+                    },
+                },
+            },
+        )
+    )
+    async with PuClient(base_url="https://mock.local", min_interval_seconds=0) as client:
+        session = await client.login("demo", "secret", school_sid="237791864815616")
+    assert session.masked_user == "stu_account"
+    assert session.year == "25"
+    assert session.college == "软件与物联网工程学院"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_login_year_college_optional_when_absent():
+    respx.post("https://mock.local/uc/user/login").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "msg": "ok",
+                "data": {
+                    "token": "tok-no-yc",
+                    "sid": "sid-no-yc",
+                    "baseUserInfo": {"account": "stu_account"},
+                },
+            },
+        )
+    )
+    async with PuClient(base_url="https://mock.local", min_interval_seconds=0) as client:
+        session = await client.login("demo", "secret", school_sid="237791864815616")
+    assert session.year is None
+    assert session.college is None

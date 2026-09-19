@@ -6,6 +6,8 @@ from datetime import datetime
 from pu_mcp.activity_parser import (
     SIGNED_IN_FIELDS,
     STATUS_FIELDS,
+    apply_eligibility,
+    is_detail_shaped,
     is_list_shaped_unknown,
     parse_activity_detail,
     parse_activity_list,
@@ -55,6 +57,23 @@ class PuService:
             max_retries=self.settings.max_retries,
         )
         self.storage = storage or Storage(self.settings.db_path)
+
+    def _session_year_college(self) -> tuple[str | None, str | None]:
+        session = self.session_store.load() or getattr(self.client, "session", None)
+        if session is None:
+            return None, None
+        return getattr(session, "year", None), getattr(session, "college", None)
+
+    def _apply_session_eligibility(self, activity: Activity) -> Activity:
+        year, college = self._session_year_college()
+        return apply_eligibility(activity, user_year=year, user_college=college)
+
+    def _apply_session_eligibility_many(self, activities: list[Activity]) -> list[Activity]:
+        year, college = self._session_year_college()
+        return [
+            apply_eligibility(activity, user_year=year, user_college=college)
+            for activity in activities
+        ]
 
     async def login(self, username: str, password: str, school_sid: str) -> AuthSession:
         session = await self.client.login(username, password, school_sid)
@@ -124,14 +143,18 @@ class PuService:
                 enriched = await self._enrich_activities(cached, resolve_sign_in=False)
                 if enriched != cached:
                     self.storage.cache_activity_list(enriched)
-                return self._filter_cached_activities(enriched, filters)
+                return self._apply_session_eligibility_many(
+                    self._filter_cached_activities(enriched, filters)
+                )
         activities = parse_activity_list(
             await self.client.activity_list(**_server_list_filters(filters))
         )
         activities = await self._enrich_activities(activities, resolve_sign_in=False)
         if use_list_cache:
             self.storage.cache_activity_list(activities)
-        return self._filter_cached_activities(activities, filters)
+        return self._apply_session_eligibility_many(
+            self._filter_cached_activities(activities, filters)
+        )
 
     async def activity_detail(self, activity_id: str, *, refresh: bool = False) -> Activity:
         ttl = self.settings.activity_cache_ttl_seconds
@@ -141,7 +164,7 @@ class PuService:
             merged = _preserve_signup_from_list(cached, list_source)
             if merged != cached:
                 self.storage.cache_activity(merged)
-            return merged
+            return self._apply_session_eligibility(merged)
         activity = parse_activity_detail(
             await self.client.activity_info(activity_id), activity_id=activity_id
         )
@@ -149,7 +172,7 @@ class PuService:
         if not merged.signup_status:
             merged = _preserve_signup_from_list(merged, cached)
         self.storage.cache_activity(merged)
-        return merged
+        return self._apply_session_eligibility(merged)
 
     async def joined_activities(self) -> list[Activity]:
         merged: list[Activity] = []
@@ -175,7 +198,9 @@ class PuService:
                 ):
                     break
                 page += 1
-        return await self._enrich_activities(merged, resolve_sign_in=True)
+        return self._apply_session_eligibility_many(
+            await self._enrich_activities(merged, resolve_sign_in=True)
+        )
 
     async def join_activity(self, activity_id: str) -> dict:
         return await self.client.join_activity(activity_id)
@@ -257,6 +282,10 @@ class PuService:
             if not activity.signup_status and detail.signup_status:
                 updates["signup_status"] = detail.signup_status
                 updates["allow_signup"] = detail.allow_signup
+            # Participation rules come from activity/info; never clobber list signup window.
+            if detail.allowed_years or detail.allowed_colleges or is_detail_shaped(detail):
+                updates["allowed_years"] = detail.allowed_years
+                updates["allowed_colleges"] = detail.allowed_colleges
             if activity.signup_start_time is None and detail.signup_start_time is not None:
                 updates["signup_start_time"] = detail.signup_start_time
             if activity.signup_end_time is None and detail.signup_end_time is not None:

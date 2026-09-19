@@ -254,7 +254,97 @@ def is_list_shaped_unknown(activity: Activity) -> bool:
     return activity.activity_type == "未知" and not is_detail_shaped(activity)
 
 
-def parse_activity(raw: dict[str, Any], *, now: datetime | None = None) -> Activity:
+def _allow_name_list(raw: dict[str, Any], *keys: str) -> list[str]:
+    value = None
+    for key in keys:
+        if key in raw:
+            value = raw.get(key)
+            break
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        return []
+    names: list[str] = []
+    for item in value:
+        if isinstance(item, dict):
+            name = item.get("name")
+            if name not in (None, ""):
+                names.append(str(name))
+        elif item not in (None, ""):
+            names.append(str(item))
+    return names
+
+
+def evaluate_eligibility(
+    allowed_years: list[str],
+    allowed_colleges: list[str],
+    *,
+    user_year: str | None = None,
+    user_college: str | None = None,
+) -> tuple[bool | None, str | None]:
+    """Return (eligible, ineligible_reason).
+
+    Empty restriction lists mean unrestricted. Missing user fields needed for a
+    non-empty restriction yield eligible=None unless another restriction already
+    proves the user ineligible.
+    """
+    reasons: list[str] = []
+    incomplete = False
+    if allowed_years:
+        if user_year in (None, ""):
+            incomplete = True
+        elif str(user_year) not in allowed_years:
+            reasons.append("年级不符合参与条件")
+    if allowed_colleges:
+        if user_college in (None, ""):
+            incomplete = True
+        elif str(user_college) not in allowed_colleges:
+            reasons.append("学院不符合参与条件")
+    if reasons:
+        return False, "；".join(reasons)
+    if incomplete:
+        return None, None
+    return True, None
+
+
+def apply_eligibility(
+    activity: Activity,
+    *,
+    user_year: str | None = None,
+    user_college: str | None = None,
+) -> Activity:
+    """Recompute eligible/reason and gate allow_signup.
+
+    ``activity.allow_signup`` must be the window/join-button verdict when
+    ``activity.eligible is not False``. If already gated (eligible is False),
+    recover the window from signup_status == 报名进行中.
+    """
+    eligible, reason = evaluate_eligibility(
+        activity.allowed_years,
+        activity.allowed_colleges,
+        user_year=user_year,
+        user_college=user_college,
+    )
+    if activity.eligible is False:
+        window_allow = activity.signup_status == "报名进行中"
+    else:
+        window_allow = activity.allow_signup
+    return activity.model_copy(
+        update={
+            "eligible": eligible,
+            "ineligible_reason": reason,
+            "allow_signup": bool(window_allow) and (eligible is not False),
+        }
+    )
+
+
+def parse_activity(
+    raw: dict[str, Any],
+    *,
+    now: datetime | None = None,
+    user_year: str | None = None,
+    user_college: str | None = None,
+) -> Activity:
     raw = _flatten_nested_activity_fields(raw)
     activity_id = _first(raw, ID_FIELDS)
     title = _first(raw, TITLE_FIELDS)
@@ -275,9 +365,18 @@ def parse_activity(raw: dict[str, Any], *, now: datetime | None = None) -> Activ
         status = status_code
     signup_start_time = _parse_datetime(_first(raw, SIGNUP_START_FIELDS))
     signup_end_time = _parse_datetime(_first(raw, SIGNUP_END_FIELDS))
-    signup_status, allow_signup = _parse_signup_state(
+    signup_status, window_allow = _parse_signup_state(
         raw, signup_start=signup_start_time, signup_end=signup_end_time, now=now
     )
+    allowed_years = _allow_name_list(raw, "allowYear", "allow_year")
+    allowed_colleges = _allow_name_list(raw, "allowCollege", "allow_college")
+    eligible, ineligible_reason = evaluate_eligibility(
+        allowed_years,
+        allowed_colleges,
+        user_year=user_year,
+        user_college=user_college,
+    )
+    allow_signup = bool(window_allow) and (eligible is not False)
     # list/myList lack type names; detail has categoryName after flattening baseInfo.
     return Activity(
         activity_id=str(activity_id),
@@ -297,11 +396,21 @@ def parse_activity(raw: dict[str, Any], *, now: datetime | None = None) -> Activ
         signed_in=_parse_signed_in(raw),
         credits=credits,
         score_items=score_items,
+        allowed_years=allowed_years,
+        allowed_colleges=allowed_colleges,
+        eligible=eligible,
+        ineligible_reason=ineligible_reason,
         raw=raw,
     )
 
 
-def parse_activity_list(response: dict[str, Any], *, now: datetime | None = None) -> list[Activity]:
+def parse_activity_list(
+    response: dict[str, Any],
+    *,
+    now: datetime | None = None,
+    user_year: str | None = None,
+    user_college: str | None = None,
+) -> list[Activity]:
     data = _data(response)
     if isinstance(data, dict):
         items = data.get("list") or data.get("items") or data.get("rows") or []
@@ -309,11 +418,19 @@ def parse_activity_list(response: dict[str, Any], *, now: datetime | None = None
         items = data
     else:
         raise ParseError("activity list data is invalid")
-    return [parse_activity(item, now=now) for item in items]
+    return [
+        parse_activity(item, now=now, user_year=user_year, user_college=user_college)
+        for item in items
+    ]
 
 
 def parse_activity_detail(
-    response: dict[str, Any], *, activity_id: str | None = None, now: datetime | None = None
+    response: dict[str, Any],
+    *,
+    activity_id: str | None = None,
+    now: datetime | None = None,
+    user_year: str | None = None,
+    user_college: str | None = None,
 ) -> Activity:
     data = _data(response)
     if not isinstance(data, dict):
@@ -321,4 +438,4 @@ def parse_activity_detail(
     payload = _flatten_nested_activity_fields(data)
     if _first(payload, ID_FIELDS) in (None, "") and activity_id not in (None, ""):
         payload["id"] = activity_id
-    return parse_activity(payload, now=now)
+    return parse_activity(payload, now=now, user_year=user_year, user_college=user_college)

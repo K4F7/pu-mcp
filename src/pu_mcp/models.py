@@ -15,6 +15,8 @@ class AuthSession(BaseModel):
     sid: str
     expires_at: datetime | None = None
     masked_user: str | None = None
+    year: str | None = None
+    college: str | None = None
 
 
 class ScoreItem(BaseModel):
@@ -44,6 +46,10 @@ class Activity(BaseModel):
     signed_in: bool = False
     credits: str | None = None
     score_items: list[ScoreItem] = Field(default_factory=list)
+    allowed_years: list[str] = Field(default_factory=list)
+    allowed_colleges: list[str] = Field(default_factory=list)
+    eligible: bool | None = None
+    ineligible_reason: str | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator(

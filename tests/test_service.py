@@ -1343,6 +1343,7 @@ async def test_joined_activities_enriches_content_location_status_from_info(fixt
 @pytest.mark.asyncio
 async def test_list_activities_enriches_when_only_signup_status_missing(fixture_json, tmp_path):
     """Complete list fields except signup_status still optional-enrich from info."""
+
     def info_handler(_id):
         payload = _live_info(
             "ACT-1001",
@@ -1600,9 +1601,7 @@ async def test_list_activities_unknown_activity_type_filter_returns_empty(fixtur
 
 
 @pytest.mark.asyncio
-async def test_list_activities_activity_type_filter_uses_cache_then_filters(
-    fixture_json, tmp_path
-):
+async def test_list_activities_activity_type_filter_uses_cache_then_filters(fixture_json, tmp_path):
     items = [
         _complete_list_item("1001", "实践已完整", "社会实践"),
         _complete_list_item("1002", "文化已完整", "校园文化"),
@@ -1619,3 +1618,102 @@ async def test_list_activities_activity_type_filter_uses_cache_then_filters(
     # First call fills cache; filtered call must not re-hit API with activity_type.
     assert client.activity_list_calls == 1
     assert client.activity_list_filters == [{"page": 1, "limit": 20}]
+
+
+@pytest.mark.asyncio
+async def test_list_activities_eligibility_from_info_enrichment(fixture_json, tmp_path):
+    """List lacks allowYear; info enrichment must gate allow_signup for year mismatch."""
+
+    def info_handler(activity_id):
+        return {
+            "code": 0,
+            "msg": "ok",
+            "data": {
+                "id": int(activity_id) if str(activity_id).isdigit() else activity_id,
+                "name": "考研择校择专业专题讲座",
+                "categoryName": "学术讲座",
+                "allowYear": [{"name": "24"}],
+                "allowCollege": [],
+                "buttonInfo": [{"name": "报名", "event": "join"}],
+            },
+        }
+
+    list_payload = {
+        "code": 0,
+        "msg": "ok",
+        "data": {
+            "list": [
+                {
+                    "id": "378191869837313",
+                    "name": "考研择校择专业专题讲座",
+                    "categoryName": "学术讲座",
+                    "startTimeValue": "报名进行中",
+                    "buttonInfo": [{"name": "报名", "event": "join"}],
+                }
+            ]
+        },
+    }
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=list_payload,
+        activity_info_handler=info_handler,
+    )
+    store = MemorySessionStore()
+    store.save(
+        AuthSession(
+            token="test-token-abcdef123456",
+            sid="test-sid-654321",
+            masked_user="demo",
+            year="25",
+            college="软件与物联网工程学院",
+        )
+    )
+    service = PuService(
+        client=client,
+        storage=Storage(tmp_path / "test.db"),
+        session_store=store,
+    )
+    activities = await service.list_activities(refresh=True)
+    assert len(activities) == 1
+    act = activities[0]
+    assert act.allowed_years == ["24"]
+    assert act.eligible is False
+    assert act.allow_signup is False
+    assert "年级不符合参与条件" in (act.ineligible_reason or "")
+
+
+@pytest.mark.asyncio
+async def test_activity_detail_eligibility_year_mismatch(fixture_json, tmp_path):
+    def info_handler(activity_id):
+        return {
+            "code": 0,
+            "msg": "ok",
+            "data": {
+                "id": activity_id,
+                "name": "年级受限活动",
+                "categoryName": "学术讲座",
+                "allowYear": [{"name": "24"}],
+                "buttonInfo": [{"name": "报名", "event": "join"}],
+            },
+        }
+
+    client = FakeClient(fixture_json, activity_info_handler=info_handler)
+    store = MemorySessionStore()
+    store.save(
+        AuthSession(
+            token="test-token-abcdef123456",
+            sid="test-sid-654321",
+            masked_user="demo",
+            year="25",
+            college="软件与物联网工程学院",
+        )
+    )
+    service = PuService(
+        client=client,
+        storage=Storage(tmp_path / "test.db"),
+        session_store=store,
+    )
+    detail = await service.activity_detail("378191869837313", refresh=True)
+    assert detail.allowed_years == ["24"]
+    assert detail.eligible is False
+    assert detail.allow_signup is False

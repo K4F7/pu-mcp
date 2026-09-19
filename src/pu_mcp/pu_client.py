@@ -173,8 +173,14 @@ class PuClient:
         if not token or not sid:
             raise AuthError("login response missing token or sid")
         user = payload.get("baseUserInfo") or payload.get("user") or {}
+        year = user.get("year")
+        college = user.get("collegeName") or user.get("college_name") or user.get("college")
         session = AuthSession(
-            token=str(token), sid=str(sid), masked_user=str(user.get("account") or username)
+            token=str(token),
+            sid=str(sid),
+            masked_user=str(user.get("account") or username),
+            year=str(year) if year not in (None, "") else None,
+            college=str(college) if college not in (None, "") else None,
         )
         self.session = session
         return session
@@ -194,17 +200,10 @@ class PuClient:
             payload_id = int(activity_id)
         return await self._post("/apis/activity/info", {"id": payload_id})
 
-
     @staticmethod
     def _require_numeric_activity_id(activity_id: str, *, action: str) -> int:
-        if not (
-            isinstance(activity_id, str)
-            and activity_id.isascii()
-            and activity_id.isdecimal()
-        ):
-            raise BusinessError(
-                f"{action} requires a numeric activity id (live API requires int)"
-            )
+        if not (isinstance(activity_id, str) and activity_id.isascii() and activity_id.isdecimal()):
+            raise BusinessError(f"{action} requires a numeric activity id (live API requires int)")
         return int(activity_id)
 
     async def join_activity(self, activity_id: str) -> dict[str, Any]:
@@ -221,9 +220,7 @@ class PuClient:
         )
 
     async def cancel_activity(self, activity_id: str) -> dict[str, Any]:
-        activity_id_int = self._require_numeric_activity_id(
-            activity_id, action="cancel_activity"
-        )
+        activity_id_int = self._require_numeric_activity_id(activity_id, action="cancel_activity")
         extra_headers = {
             "X-Sign": generate_x_sign(),
             "Origin": "https://class.pocketuni.net",
