@@ -562,3 +562,204 @@ def test_parse_signup_status_uses_injected_now():
     assert during.allow_signup is True
     assert after.signup_status == "报名已结束"
     assert after.allow_signup is False
+
+
+def test_parse_allow_year_and_college_names_from_base_info():
+    activity = parse_activity(
+        {
+            "id": "378191869837313",
+            "name": "考研择校择专业专题讲座",
+            "baseInfo": {
+                "allowYear": [{"name": "24", "id": 1}, {"name": "23"}],
+                "allowCollege": [{"name": "软件与物联网工程学院"}],
+            },
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        }
+    )
+    assert activity.allowed_years == ["24", "23"]
+    assert activity.allowed_colleges == ["软件与物联网工程学院"]
+
+
+def test_parse_allow_year_from_flat_raw():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "扁平限制",
+            "allowYear": [{"name": "24"}],
+            "allowCollege": [],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        }
+    )
+    assert activity.allowed_years == ["24"]
+    assert activity.allowed_colleges == []
+
+
+def test_empty_allow_lists_mean_unrestricted_eligible_true():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "不限年级学院",
+            "allowYear": [],
+            "allowCollege": [],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+        user_year="25",
+        user_college="任意学院",
+    )
+    assert activity.eligible is True
+    assert activity.ineligible_reason is None
+    assert activity.allow_signup is True
+
+
+def test_year_mismatch_sets_eligible_false_and_blocks_allow_signup():
+    activity = parse_activity(
+        {
+            "id": "378191869837313",
+            "name": "考研讲座",
+            "allowYear": [{"name": "24"}],
+            "allowCollege": [],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+        user_year="25",
+        user_college="软件与物联网工程学院",
+    )
+    assert activity.eligible is False
+    assert activity.ineligible_reason is not None
+    assert "年级不符合参与条件" in activity.ineligible_reason
+    assert activity.allow_signup is False
+
+
+def test_college_mismatch_sets_eligible_false():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "学院限制",
+            "allowYear": [],
+            "allowCollege": [{"name": "计算机学院"}],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+        user_year="25",
+        user_college="软件与物联网工程学院",
+    )
+    assert activity.eligible is False
+    assert "学院不符合参与条件" in (activity.ineligible_reason or "")
+    assert activity.allow_signup is False
+
+
+def test_missing_user_year_with_restriction_leaves_eligible_none_but_window_allow():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "缺用户年级",
+            "allowYear": [{"name": "24"}],
+            "allowCollege": [],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+        user_year=None,
+        user_college=None,
+    )
+    assert activity.eligible is None
+    assert activity.ineligible_reason is None
+    assert activity.allow_signup is True  # eligible is not False
+
+
+def test_known_mismatch_beats_missing_other_field():
+    """Year fails even if college is missing while college is also restricted."""
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "双限制缺学院",
+            "allowYear": [{"name": "24"}],
+            "allowCollege": [{"name": "计算机学院"}],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+        user_year="25",
+        user_college=None,
+    )
+    assert activity.eligible is False
+    assert "年级不符合参与条件" in (activity.ineligible_reason or "")
+    assert activity.allow_signup is False
+
+
+def test_apply_eligibility_gates_existing_window_allow():
+    from pu_mcp.activity_parser import apply_eligibility
+
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "后置资格",
+            "allowYear": [{"name": "24"}],
+            "allowCollege": [],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        }
+    )
+    assert activity.allow_signup is True
+    gated = apply_eligibility(activity, user_year="25", user_college=None)
+    assert gated.eligible is False
+    assert gated.allow_signup is False
+    assert "年级不符合参与条件" in (gated.ineligible_reason or "")
+
+
+def test_missing_allow_keys_leave_eligible_unknown_not_unrestricted():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "列表无参与条件字段",
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+        user_year="25",
+        user_college="软件与物联网工程学院",
+    )
+    assert activity.participation_rules_known is False
+    assert activity.eligible is None
+    assert activity.ineligible_reason is None
+    assert activity.allow_signup is True
+
+
+def test_empty_allow_keys_present_are_known_unrestricted():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "显式空限制",
+            "allowYear": [],
+            "allowCollege": [],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+        user_year="25",
+        user_college="软件与物联网工程学院",
+    )
+    assert activity.participation_rules_known is True
+    assert activity.eligible is True
+    assert activity.allow_signup is True
+
+
+def test_only_allow_year_key_leaves_rules_unknown():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "仅有年级限制字段",
+            "allowYear": [{"name": "24"}],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+        user_year="25",
+        user_college="软件与物联网工程学院",
+    )
+    assert activity.participation_rules_known is False
+    assert activity.eligible is None
+    assert activity.allow_signup is True
+
+
+def test_only_allow_college_key_leaves_rules_unknown():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "仅有学院限制字段",
+            "allowCollege": [{"name": "计算机学院"}],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+        user_year="25",
+        user_college="软件与物联网工程学院",
+    )
+    assert activity.participation_rules_known is False
+    assert activity.eligible is None
+    assert activity.allow_signup is True

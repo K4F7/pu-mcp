@@ -263,3 +263,17 @@ def test_keyring_session_store_clear_removes_new_and_legacy_stores(fake_home, me
     assert memory_keyring.get_password(LEGACY_SERVICE_NAME, "metadata") is None
     assert not new_path.exists()
     assert not legacy_path.exists()
+
+
+def test_file_session_store_loads_legacy_session_without_year_college(tmp_path):
+    path = tmp_path / "session.json"
+    path.write_text(
+        '{"token":"legacy-token","sid":"legacy-sid","masked_user":"demo"}',
+        encoding="utf-8",
+    )
+    store = FileSessionStore(path)
+    session = store.load()
+    assert session is not None
+    assert session.token == "legacy-token"
+    assert session.year is None
+    assert session.college is None
