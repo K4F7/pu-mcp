@@ -254,11 +254,15 @@ def is_list_shaped_unknown(activity: Activity) -> bool:
     return activity.activity_type == "未知" and not is_detail_shaped(activity)
 
 
-_PARTICIPATION_RULE_KEYS = ("allowYear", "allow_year", "allowCollege", "allow_college")
+_YEAR_RULE_KEYS = ("allowYear", "allow_year")
+_COLLEGE_RULE_KEYS = ("allowCollege", "allow_college")
 
 
 def participation_rules_known_in_raw(raw: dict[str, Any]) -> bool:
-    return any(key in raw for key in _PARTICIPATION_RULE_KEYS)
+    """True only when both year and college rule keys are present (empty list = unrestricted)."""
+    has_year = any(key in raw for key in _YEAR_RULE_KEYS)
+    has_college = any(key in raw for key in _COLLEGE_RULE_KEYS)
+    return has_year and has_college
 
 
 def _allow_name_list(raw: dict[str, Any], *keys: str) -> list[str]:

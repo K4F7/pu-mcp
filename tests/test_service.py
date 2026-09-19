@@ -1696,6 +1696,7 @@ async def test_activity_detail_eligibility_year_mismatch(fixture_json, tmp_path)
                 "name": "年级受限活动",
                 "categoryName": "学术讲座",
                 "allowYear": [{"name": "24"}],
+                "allowCollege": [],
                 "buttonInfo": [{"name": "报名", "event": "join"}],
             },
         }

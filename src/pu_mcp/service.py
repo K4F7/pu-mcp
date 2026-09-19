@@ -283,7 +283,8 @@ class PuService:
                 updates["signup_status"] = detail.signup_status
                 updates["allow_signup"] = detail.allow_signup
             # Participation rules come from activity/info; never clobber list signup window.
-            if detail.participation_rules_known or is_detail_shaped(detail):
+            # Only copy when detail actually observed both rule keys (not merely detail-shaped).
+            if detail.participation_rules_known:
                 updates["allowed_years"] = detail.allowed_years
                 updates["allowed_colleges"] = detail.allowed_colleges
                 updates["participation_rules_known"] = True
@@ -309,26 +310,28 @@ class PuService:
             # (live list often omits joinEndTime).
             needs_signup = not activity.signup_status
             # List omits allowYear/allowCollege; fetch info for open signups until rules known.
+            # Use the uncapped path (like type/sign) so the optional HTTP budget cannot
+            # strand open signups as allow_signup=True with unknown participation rules.
             needs_participation = (
                 activity.allow_signup
                 and not activity.participation_rules_known
                 and not is_detail_shaped(activity)
             )
             # status_code alone must not force HTTP; fill from TTL-aware cache only.
-            needs_optional = (
-                needs_content
-                or needs_location
-                or needs_status
-                or needs_signup
-                or needs_participation
-            )
+            needs_optional = needs_content or needs_location or needs_status or needs_signup
             needs_status_code = not activity.status_code
-            if not needs_type and not needs_sign and not needs_optional and not needs_status_code:
+            if (
+                not needs_type
+                and not needs_sign
+                and not needs_participation
+                and not needs_optional
+                and not needs_status_code
+            ):
                 return activity
 
             ttl = self.settings.activity_cache_ttl_seconds
             detail: Activity | None = None
-            if needs_type or needs_sign:
+            if needs_type or needs_sign or needs_participation:
                 try:
                     async with semaphore:
                         detail = await self.activity_detail(activity.activity_id, refresh=False)
