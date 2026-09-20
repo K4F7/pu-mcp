@@ -207,6 +207,10 @@ def activities_info(
     console.print(f"状态：{activity.status or '-'}")
     console.print(f"报名状态：{activity.signup_status or '-'}")
     console.print(f"可报：{'是' if activity.allow_signup else '否'}")
+    capacity = "-" if activity.capacity is None else str(activity.capacity)
+    joined = "-" if activity.joined_count is None else str(activity.joined_count)
+    full = "是" if activity.is_full else "否"
+    console.print(f"名额：{joined}/{capacity}（满员：{full}）")
     console.print(f"报名：{activity.signup_start_time or '-'} ~ {activity.signup_end_time or '-'}")
     console.print(f"活动：{activity.start_time or '-'} ~ {activity.end_time or '-'}")
     console.print(f"加分/学分/积分：{_score_summary(activity)}")

@@ -51,6 +51,9 @@ class Activity(BaseModel):
     participation_rules_known: bool = False
     eligible: bool | None = None
     ineligible_reason: str | None = None
+    capacity: int | None = None
+    joined_count: int | None = None
+    is_full: bool = False
     raw: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator(

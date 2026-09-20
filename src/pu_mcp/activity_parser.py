@@ -22,7 +22,7 @@ START_FIELDS = ("startTime", "start_time", "beginTime")
 END_FIELDS = ("endTime", "end_time", "finishTime")
 SIGNUP_START_FIELDS = ("joinStartTime", "applyStartTime", "signup_start", "signupStartTime")
 SIGNUP_END_FIELDS = ("joinEndTime", "applyEndTime", "signup_end", "signupEndTime")
-SIGNUP_STATUS_KNOWN = ("报名进行中", "报名已结束", "报名未开始")
+SIGNUP_STATUS_KNOWN = ("报名进行中", "报名已结束", "报名未开始", "已满")
 LOCATION_FIELDS = ("address", "location", "place")
 ORGANIZER_FIELDS = ("organizer", "host", "clubName")
 STATUS_FIELDS = ("status", "state")
@@ -216,6 +216,75 @@ def _parse_signup_state(
     return signup_status, allow_signup
 
 
+def _coerce_int(value: Any) -> int | None:
+    if isinstance(value, bool) or value in (None, ""):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _parse_capacity(raw: dict[str, Any]) -> int | None:
+    value = _first(raw, ("allowUserCount", "allow_user_count"))
+    count = _coerce_int(value)
+    if count is None or count <= 0:
+        return None
+    return count
+
+
+def _parse_joined_count(raw: dict[str, Any]) -> int | None:
+    value = _first(raw, ("joinUserCount", "join_user_count"))
+    return _coerce_int(value)
+
+
+def compute_is_full(capacity: int | None, joined_count: int | None) -> bool:
+    return (
+        capacity is not None
+        and capacity > 0
+        and joined_count is not None
+        and joined_count >= capacity
+    )
+
+
+def apply_capacity_gate(activity: Activity) -> Activity:
+    """Gate allow_signup when full; rename in-progress window status to 已满.
+
+    When capacity later shows room, restore ``已满`` back to ``报名进行中`` so a
+    stale list-cache full state cannot stick after a fresh detail refresh.
+    Eligibility is re-applied by the caller afterward.
+    """
+    is_full = compute_is_full(activity.capacity, activity.joined_count)
+    signup_status = activity.signup_status
+    allow_signup = activity.allow_signup
+    if is_full:
+        allow_signup = False
+        if signup_status == "报名进行中":
+            signup_status = "已满"
+    elif signup_status == "已满":
+        signup_status = "报名进行中"
+        allow_signup = True
+    if (
+        activity.is_full == is_full
+        and activity.allow_signup == allow_signup
+        and activity.signup_status == signup_status
+    ):
+        return activity
+    return activity.model_copy(
+        update={
+            "is_full": is_full,
+            "allow_signup": allow_signup,
+            "signup_status": signup_status,
+        }
+    )
+
+
 def _parse_signed_in(raw: dict[str, Any]) -> bool:
     for field in SIGNED_IN_FIELDS:
         if field not in raw:
@@ -339,12 +408,14 @@ def apply_eligibility(
     else:
         window_allow = activity.allow_signup
     if not activity.participation_rules_known:
-        return activity.model_copy(
-            update={
-                "eligible": None,
-                "ineligible_reason": None,
-                "allow_signup": bool(window_allow),
-            }
+        return apply_capacity_gate(
+            activity.model_copy(
+                update={
+                    "eligible": None,
+                    "ineligible_reason": None,
+                    "allow_signup": bool(window_allow),
+                }
+            )
         )
     eligible, reason = evaluate_eligibility(
         activity.allowed_years,
@@ -352,12 +423,14 @@ def apply_eligibility(
         user_year=user_year,
         user_college=user_college,
     )
-    return activity.model_copy(
-        update={
-            "eligible": eligible,
-            "ineligible_reason": reason,
-            "allow_signup": bool(window_allow) and (eligible is not False),
-        }
+    return apply_capacity_gate(
+        activity.model_copy(
+            update={
+                "eligible": eligible,
+                "ineligible_reason": reason,
+                "allow_signup": bool(window_allow) and (eligible is not False),
+            }
+        )
     )
 
 
@@ -403,7 +476,12 @@ def parse_activity(
         )
     else:
         eligible, ineligible_reason = None, None
-    allow_signup = bool(window_allow) and (eligible is not False)
+    capacity = _parse_capacity(raw)
+    joined_count = _parse_joined_count(raw)
+    is_full = compute_is_full(capacity, joined_count)
+    allow_signup = bool(window_allow) and (eligible is not False) and not is_full
+    if is_full and signup_status == "报名进行中":
+        signup_status = "已满"
     # list/myList lack type names; detail has categoryName after flattening baseInfo.
     return Activity(
         activity_id=str(activity_id),
@@ -428,6 +506,9 @@ def parse_activity(
         participation_rules_known=rules_known,
         eligible=eligible,
         ineligible_reason=ineligible_reason,
+        capacity=capacity,
+        joined_count=joined_count,
+        is_full=is_full,
         raw=raw,
     )
 

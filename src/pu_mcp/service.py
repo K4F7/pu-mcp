@@ -6,6 +6,7 @@ from datetime import datetime
 from pu_mcp.activity_parser import (
     SIGNED_IN_FIELDS,
     STATUS_FIELDS,
+    apply_capacity_gate,
     apply_eligibility,
     is_detail_shaped,
     is_list_shaped_unknown,
@@ -161,7 +162,7 @@ class PuService:
         cached = self.storage.get_cached_activity(activity_id, max_age_seconds=ttl)
         list_source = _list_cache_sibling(self.storage, activity_id, ttl)
         if not refresh and cached is not None and not is_list_shaped_unknown(cached):
-            merged = _preserve_signup_from_list(cached, list_source)
+            merged = apply_capacity_gate(_preserve_signup_from_list(cached, list_source))
             if merged != cached:
                 self.storage.cache_activity(merged)
             return self._apply_session_eligibility(merged)
@@ -171,6 +172,8 @@ class PuService:
         merged = _preserve_signup_from_list(activity, list_source)
         if not merged.signup_status:
             merged = _preserve_signup_from_list(merged, cached)
+        # List signup window may re-open allow_signup; re-gate with detail capacity.
+        merged = apply_capacity_gate(merged)
         self.storage.cache_activity(merged)
         return self._apply_session_eligibility(merged)
 
@@ -292,9 +295,14 @@ class PuService:
                 updates["signup_start_time"] = detail.signup_start_time
             if activity.signup_end_time is None and detail.signup_end_time is not None:
                 updates["signup_end_time"] = detail.signup_end_time
+            # Prefer fresh info capacity counts over stale list/cache values.
+            if detail.capacity is not None:
+                updates["capacity"] = detail.capacity
+            if detail.joined_count is not None:
+                updates["joined_count"] = detail.joined_count
             if not updates:
-                return activity
-            return activity.model_copy(update=updates)
+                return apply_capacity_gate(activity)
+            return apply_capacity_gate(activity.model_copy(update=updates))
 
         async def enrich_one(activity: Activity) -> Activity:
             if not activity.activity_id:
@@ -317,6 +325,13 @@ class PuService:
                 and not activity.participation_rules_known
                 and not is_detail_shaped(activity)
             )
+            # Missing capacity while signup is open (or looks open) — fetch info so
+            # full activities are not left as allow_signup=True.
+            needs_capacity = (
+                (activity.capacity is None or activity.joined_count is None)
+                and (activity.allow_signup or activity.signup_status == "报名进行中")
+                and not is_detail_shaped(activity)
+            )
             # status_code alone must not force HTTP; fill from TTL-aware cache only.
             needs_optional = needs_content or needs_location or needs_status or needs_signup
             needs_status_code = not activity.status_code
@@ -324,6 +339,7 @@ class PuService:
                 not needs_type
                 and not needs_sign
                 and not needs_participation
+                and not needs_capacity
                 and not needs_optional
                 and not needs_status_code
             ):
@@ -331,7 +347,7 @@ class PuService:
 
             ttl = self.settings.activity_cache_ttl_seconds
             detail: Activity | None = None
-            if needs_type or needs_sign or needs_participation:
+            if needs_type or needs_sign or needs_participation or needs_capacity:
                 try:
                     async with semaphore:
                         detail = await self.activity_detail(activity.activity_id, refresh=False)
