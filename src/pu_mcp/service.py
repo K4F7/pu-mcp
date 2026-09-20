@@ -295,9 +295,10 @@ class PuService:
                 updates["signup_start_time"] = detail.signup_start_time
             if activity.signup_end_time is None and detail.signup_end_time is not None:
                 updates["signup_end_time"] = detail.signup_end_time
-            if activity.capacity is None and detail.capacity is not None:
+            # Prefer fresh info capacity counts over stale list/cache values.
+            if detail.capacity is not None:
                 updates["capacity"] = detail.capacity
-            if activity.joined_count is None and detail.joined_count is not None:
+            if detail.joined_count is not None:
                 updates["joined_count"] = detail.joined_count
             if not updates:
                 return apply_capacity_gate(activity)
@@ -327,7 +328,7 @@ class PuService:
             # Missing capacity while signup is open (or looks open) — fetch info so
             # full activities are not left as allow_signup=True.
             needs_capacity = (
-                activity.capacity is None
+                (activity.capacity is None or activity.joined_count is None)
                 and (activity.allow_signup or activity.signup_status == "报名进行中")
                 and not is_detail_shaped(activity)
             )

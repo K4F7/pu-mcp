@@ -1961,3 +1961,151 @@ async def test_detail_not_started_keeps_status_eligible_and_capacity(fixture_jso
     assert act.capacity == 100
     assert act.joined_count == 0
     assert act.is_full is False
+
+
+@pytest.mark.asyncio
+async def test_list_enriches_when_joined_count_missing(fixture_json, tmp_path):
+    """capacity alone is not enough; missing joined_count must still fetch info."""
+
+    def info_handler(activity_id):
+        return {
+            "code": 0,
+            "msg": "ok",
+            "data": {
+                "id": activity_id,
+                "name": "缺已报人数",
+                "categoryName": "学术讲座",
+                "allowYear": [],
+                "allowCollege": [],
+                "allowUserCount": 10,
+                "joinUserCount": 10,
+                "buttonInfo": [{"name": "报名", "event": "join"}],
+            },
+        }
+
+    list_payload = {
+        "code": 0,
+        "msg": "ok",
+        "data": {
+            "list": [
+                {
+                    "id": "9101",
+                    "name": "缺已报人数",
+                    "categoryName": "学术讲座",
+                    "startTimeValue": "报名进行中",
+                    "allowYear": [],
+                    "allowCollege": [],
+                    "allowUserCount": 10,
+                    # joinUserCount omitted
+                    "buttonInfo": [{"name": "报名", "event": "join"}],
+                }
+            ]
+        },
+    }
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=list_payload,
+        activity_info_handler=info_handler,
+    )
+    store = MemorySessionStore()
+    store.save(
+        AuthSession(
+            token="test-token-abcdef123456",
+            sid="test-sid-654321",
+            masked_user="demo",
+            year="25",
+            college="软件与物联网工程学院",
+        )
+    )
+    service = PuService(
+        client=client,
+        storage=Storage(tmp_path / "test.db"),
+        session_store=store,
+    )
+    activities = await service.list_activities(refresh=True)
+    assert client.activity_info_calls >= 1
+    act = activities[0]
+    assert act.joined_count == 10
+    assert act.is_full is True
+    assert act.allow_signup is False
+    assert act.signup_status == "已满"
+
+
+@pytest.mark.asyncio
+async def test_detail_refresh_recovers_from_stale_list_full_cache(fixture_json, tmp_path):
+    """Stale list 已满 must not stick after refresh when detail capacity has room."""
+    list_item = {
+        "id": "9102",
+        "name": "缓存满员",
+        "categoryName": "学术讲座",
+        "description": "已有正文",
+        "address": "虚构活动室 A",
+        "statusName": "进行中",
+        "status": 5,
+        "startTimeValue": "报名进行中",
+        "joinStartTime": "2026-06-01 00:00:00",
+        "allowYear": [],
+        "allowCollege": [],
+        "allowUserCount": 5,
+        "joinUserCount": 5,
+        "buttonInfo": [{"name": "报名", "event": "join"}],
+    }
+    list_payload = {"code": 0, "msg": "ok", "data": {"list": [list_item]}}
+
+    def info_handler(activity_id):
+        return {
+            "code": 0,
+            "msg": "ok",
+            "data": {
+                "id": activity_id,
+                "name": "缓存满员",
+                "categoryName": "学术讲座",
+                "allowYear": [],
+                "allowCollege": [],
+                "allowUserCount": 5,
+                "joinUserCount": 3,
+                "buttonInfo": [{"name": "报名", "event": "join"}],
+            },
+        }
+
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=list_payload,
+        activity_info_handler=info_handler,
+    )
+    store = MemorySessionStore()
+    store.save(
+        AuthSession(
+            token="test-token-abcdef123456",
+            sid="test-sid-654321",
+            masked_user="demo",
+            year="25",
+            college="软件与物联网工程学院",
+        )
+    )
+    service = PuService(
+        client=client,
+        storage=Storage(tmp_path / "test.db"),
+        session_store=store,
+    )
+    listed = await service.list_activities(refresh=True)
+    assert listed[0].is_full is True
+    assert listed[0].signup_status == "已满"
+    # Poison list cache sibling to stay full while detail now has room.
+    service.storage.cache_activity_list(
+        [
+            listed[0].model_copy(
+                update={
+                    "joined_count": 5,
+                    "is_full": True,
+                    "signup_status": "已满",
+                    "allow_signup": False,
+                }
+            )
+        ]
+    )
+    detail = await service.activity_detail("9102", refresh=True)
+    assert detail.joined_count == 3
+    assert detail.is_full is False
+    assert detail.signup_status == "报名进行中"
+    assert detail.allow_signup is True

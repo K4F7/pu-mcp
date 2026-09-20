@@ -977,3 +977,24 @@ def test_allow_join_count_still_ignored_for_capacity():
     assert activity.capacity is None
     assert activity.joined_count == 1
     assert activity.is_full is False
+
+
+def test_apply_capacity_gate_recovers_full_when_room():
+    from pu_mcp.activity_parser import apply_capacity_gate
+    from pu_mcp.models import Activity
+
+    stale = Activity(
+        activity_id="1001",
+        title="曾满员",
+        signup_status="已满",
+        allow_signup=False,
+        capacity=10,
+        joined_count=10,
+        is_full=True,
+    )
+    # Fresh counts show room (e.g. someone cancelled).
+    refreshed = stale.model_copy(update={"joined_count": 9})
+    gated = apply_capacity_gate(refreshed)
+    assert gated.is_full is False
+    assert gated.signup_status == "报名进行中"
+    assert gated.allow_signup is True

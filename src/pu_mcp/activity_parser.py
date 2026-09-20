@@ -254,7 +254,12 @@ def compute_is_full(capacity: int | None, joined_count: int | None) -> bool:
 
 
 def apply_capacity_gate(activity: Activity) -> Activity:
-    """Gate allow_signup when full; rename in-progress window status to 已满."""
+    """Gate allow_signup when full; rename in-progress window status to 已满.
+
+    When capacity later shows room, restore ``已满`` back to ``报名进行中`` so a
+    stale list-cache full state cannot stick after a fresh detail refresh.
+    Eligibility is re-applied by the caller afterward.
+    """
     is_full = compute_is_full(activity.capacity, activity.joined_count)
     signup_status = activity.signup_status
     allow_signup = activity.allow_signup
@@ -262,6 +267,9 @@ def apply_capacity_gate(activity: Activity) -> Activity:
         allow_signup = False
         if signup_status == "报名进行中":
             signup_status = "已满"
+    elif signup_status == "已满":
+        signup_status = "报名进行中"
+        allow_signup = True
     if (
         activity.is_full == is_full
         and activity.allow_signup == allow_signup
