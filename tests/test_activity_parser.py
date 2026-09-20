@@ -763,3 +763,217 @@ def test_only_allow_college_key_leaves_rules_unknown():
     assert activity.participation_rules_known is False
     assert activity.eligible is None
     assert activity.allow_signup is True
+
+
+def test_parse_capacity_and_joined_from_allow_user_count():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "名额活动",
+            "allowUserCount": 30,
+            "joinUserCount": 12,
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        }
+    )
+    assert activity.capacity == 30
+    assert activity.joined_count == 12
+    assert activity.is_full is False
+    assert activity.signup_status == "报名进行中"
+    assert activity.allow_signup is True
+
+
+def test_parse_capacity_snake_case_aliases():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "蛇形字段",
+            "allow_user_count": 10,
+            "join_user_count": 3,
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        }
+    )
+    assert activity.capacity == 10
+    assert activity.joined_count == 3
+    assert activity.is_full is False
+
+
+def test_parse_capacity_non_positive_is_none():
+    for cap in (0, -1):
+        activity = parse_activity(
+            {
+                "id": "1001",
+                "name": "无限或不详",
+                "allowUserCount": cap,
+                "joinUserCount": 99,
+                "buttonInfo": [{"name": "报名", "event": "join"}],
+            }
+        )
+        assert activity.capacity is None
+        assert activity.is_full is False
+        assert activity.allow_signup is True
+
+
+def test_parse_missing_capacity_fields_are_none():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "无名额",
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        }
+    )
+    assert activity.capacity is None
+    assert activity.joined_count is None
+    assert activity.is_full is False
+
+
+def test_full_capacity_gates_allow_signup_and_status_full():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "已满员",
+            "allowUserCount": 50,
+            "joinUserCount": 50,
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+            "startTimeValue": "报名进行中",
+        }
+    )
+    assert activity.is_full is True
+    assert activity.allow_signup is False
+    assert activity.signup_status == "已满"
+
+
+def test_over_capacity_also_full():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "超员",
+            "allowUserCount": 10,
+            "joinUserCount": 11,
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        }
+    )
+    assert activity.is_full is True
+    assert activity.allow_signup is False
+    assert activity.signup_status == "已满"
+
+
+def test_full_does_not_change_not_started_status():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "未开报但已满",
+            "allowUserCount": 5,
+            "joinUserCount": 5,
+            "startTimeValue": "报名未开始",
+            "joinStartTime": "2099-01-01 00:00:00",
+        },
+        user_year="25",
+        user_college="软件与物联网工程学院",
+    )
+    assert activity.is_full is True
+    assert activity.signup_status == "报名未开始"
+    assert activity.allow_signup is False
+    # eligible still computed for Agenda reservation filter
+    assert activity.eligible is None or activity.eligible is True
+
+
+def test_full_not_started_with_known_rules_keeps_eligible():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "未开报可预约",
+            "allowUserCount": 5,
+            "joinUserCount": 5,
+            "startTimeValue": "报名未开始",
+            "allowYear": [],
+            "allowCollege": [],
+        },
+        user_year="25",
+        user_college="软件与物联网工程学院",
+    )
+    assert activity.is_full is True
+    assert activity.signup_status == "报名未开始"
+    assert activity.allow_signup is False
+    assert activity.eligible is True
+
+
+def test_full_with_ineligible_still_false_allow():
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "满员且年级不符",
+            "allowUserCount": 1,
+            "joinUserCount": 1,
+            "allowYear": [{"name": "24"}],
+            "allowCollege": [],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+        user_year="25",
+    )
+    assert activity.is_full is True
+    assert activity.eligible is False
+    assert activity.allow_signup is False
+    assert activity.signup_status == "已满"
+
+
+def test_capacity_from_nested_base_info(fixture_json):
+    payload = {
+        "code": 0,
+        "msg": "ok",
+        "data": {
+            "baseInfo": {
+                "name": "嵌套名额",
+                "categoryName": "学术讲座",
+                "allowUserCount": 20,
+                "joinUserCount": 20,
+                "statusName": "未开始",
+                "status": 21,
+            },
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        },
+    }
+    activity = parse_activity_detail(payload, activity_id="5001")
+    assert activity.capacity == 20
+    assert activity.joined_count == 20
+    assert activity.is_full is True
+    assert activity.signup_status == "已满"
+    assert activity.allow_signup is False
+
+
+def test_apply_eligibility_then_capacity_gate():
+    from pu_mcp.activity_parser import apply_eligibility
+
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "后置满员",
+            "allowUserCount": 2,
+            "joinUserCount": 2,
+            "allowYear": [],
+            "allowCollege": [],
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        }
+    )
+    assert activity.signup_status == "已满"
+    assert activity.allow_signup is False
+    gated = apply_eligibility(activity, user_year="25", user_college="X")
+    assert gated.eligible is True
+    assert gated.is_full is True
+    assert gated.allow_signup is False
+    assert gated.signup_status == "已满"
+
+
+def test_allow_join_count_still_ignored_for_capacity():
+    """allowJoinCount must not populate capacity (existing invariant)."""
+    activity = parse_activity(
+        {
+            "id": "1001",
+            "name": "别名干扰",
+            "allowJoinCount": 99,
+            "joinUserCount": 1,
+            "buttonInfo": [{"name": "报名", "event": "join"}],
+        }
+    )
+    assert activity.capacity is None
+    assert activity.joined_count == 1
+    assert activity.is_full is False

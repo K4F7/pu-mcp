@@ -1276,6 +1276,9 @@ def _complete_list_item(activity_id: str, title: str, activity_type: str, **fiel
         # Explicit empty rules: known unrestricted (live list omits these keys).
         "allowYear": [],
         "allowCollege": [],
+        # Capacity present so enrichment need not fetch info solely for is_full.
+        "allowUserCount": 100,
+        "joinUserCount": 10,
     }
     payload.update(fields)
     return payload
@@ -1792,3 +1795,169 @@ async def test_list_activities_fetches_info_when_participation_rules_unknown(
     assert activities[0].allowed_years == ["24"]
     assert activities[0].eligible is False
     assert activities[0].allow_signup is False
+
+
+@pytest.mark.asyncio
+async def test_list_activities_enriches_capacity_and_gates_full(fixture_json, tmp_path):
+    """Open signup list without capacity must fetch info and mark full as not allow_signup."""
+
+    def info_handler(activity_id):
+        return {
+            "code": 0,
+            "msg": "ok",
+            "data": {
+                "id": activity_id,
+                "name": "满员讲座",
+                "categoryName": "学术讲座",
+                "allowYear": [],
+                "allowCollege": [],
+                "allowUserCount": 30,
+                "joinUserCount": 30,
+                "buttonInfo": [{"name": "报名", "event": "join"}],
+            },
+        }
+
+    list_payload = {
+        "code": 0,
+        "msg": "ok",
+        "data": {
+            "list": [
+                {
+                    "id": "9001",
+                    "name": "满员讲座",
+                    "categoryName": "学术讲座",
+                    "startTimeValue": "报名进行中",
+                    "buttonInfo": [{"name": "报名", "event": "join"}],
+                }
+            ]
+        },
+    }
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=list_payload,
+        activity_info_handler=info_handler,
+    )
+    store = MemorySessionStore()
+    store.save(
+        AuthSession(
+            token="test-token-abcdef123456",
+            sid="test-sid-654321",
+            masked_user="demo",
+            year="25",
+            college="软件与物联网工程学院",
+        )
+    )
+    service = PuService(
+        client=client,
+        storage=Storage(tmp_path / "test.db"),
+        session_store=store,
+    )
+    activities = await service.list_activities(refresh=True)
+    assert client.activity_info_calls >= 1
+    act = activities[0]
+    assert act.capacity == 30
+    assert act.joined_count == 30
+    assert act.is_full is True
+    assert act.allow_signup is False
+    assert act.signup_status == "已满"
+
+
+@pytest.mark.asyncio
+async def test_activity_detail_full_overrides_list_preserve_signup(fixture_json, tmp_path):
+    """List may say 进行中/可报; detail capacity full must still gate after preserve."""
+    list_item = {
+        "id": "9002",
+        "name": "列表可报详情满",
+        "categoryName": "学术讲座",
+        "startTimeValue": "报名进行中",
+        "buttonInfo": [{"name": "报名", "event": "join"}],
+    }
+    list_payload = {"code": 0, "msg": "ok", "data": {"list": [list_item]}}
+
+    def info_handler(activity_id):
+        return {
+            "code": 0,
+            "msg": "ok",
+            "data": {
+                "id": activity_id,
+                "name": "列表可报详情满",
+                "categoryName": "学术讲座",
+                "allowYear": [],
+                "allowCollege": [],
+                "allowUserCount": 5,
+                "joinUserCount": 5,
+                "buttonInfo": [{"name": "报名", "event": "join"}],
+            },
+        }
+
+    client = FakeClient(
+        fixture_json,
+        activity_list_payload=list_payload,
+        activity_info_handler=info_handler,
+    )
+    store = MemorySessionStore()
+    store.save(
+        AuthSession(
+            token="test-token-abcdef123456",
+            sid="test-sid-654321",
+            masked_user="demo",
+            year="25",
+            college="软件与物联网工程学院",
+        )
+    )
+    service = PuService(
+        client=client,
+        storage=Storage(tmp_path / "test.db"),
+        session_store=store,
+    )
+    await service.list_activities(refresh=True)
+    detail = await service.activity_detail("9002", refresh=True)
+    assert detail.is_full is True
+    assert detail.allow_signup is False
+    assert detail.signup_status == "已满"
+
+
+@pytest.mark.asyncio
+async def test_detail_not_started_keeps_status_eligible_and_capacity(fixture_json, tmp_path):
+    """未开报: allow_signup=false, signup_status stays 报名未开始; eligible for Agenda."""
+
+    def info_handler(activity_id):
+        return {
+            "code": 0,
+            "msg": "ok",
+            "data": {
+                "id": activity_id,
+                "name": "预约抢",
+                "categoryName": "学术讲座",
+                "allowYear": [],
+                "allowCollege": [],
+                "allowUserCount": 100,
+                "joinUserCount": 0,
+                "joinStartTime": "2099-06-01 00:00:00",
+                "buttonInfo": [{"name": "报名未开始", "event": ""}],
+            },
+        }
+
+    client = FakeClient(fixture_json, activity_info_handler=info_handler)
+    store = MemorySessionStore()
+    store.save(
+        AuthSession(
+            token="test-token-abcdef123456",
+            sid="test-sid-654321",
+            masked_user="demo",
+            year="25",
+            college="软件与物联网工程学院",
+        )
+    )
+    service = PuService(
+        client=client,
+        storage=Storage(tmp_path / "test.db"),
+        session_store=store,
+    )
+    act = await service.activity_detail("9003", refresh=True)
+    assert act.signup_status == "报名未开始"
+    assert act.allow_signup is False
+    assert act.eligible is True
+    assert act.capacity == 100
+    assert act.joined_count == 0
+    assert act.is_full is False
